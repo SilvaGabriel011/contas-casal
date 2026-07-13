@@ -1,0 +1,389 @@
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+
+export type Lang = 'pt' | 'en'
+
+const STORAGE_KEY = 'cc.lang'
+
+const dict = {
+  pt: {
+    appName: 'Contas do Casal',
+    tagline: 'As finanças de vocês dois, na Austrália e no Brasil, num lugar só.',
+    // profiles
+    couple: 'Casal',
+    // tabs
+    tabHome: 'Início',
+    tabBills: 'Contas',
+    tabIncome: 'Renda',
+    tabSettings: 'Ajustes',
+    // greetings
+    goodMorning: 'Bom dia',
+    goodAfternoon: 'Boa tarde',
+    goodEvening: 'Boa noite',
+    // summary card
+    thisMonth: 'este mês',
+    ofBills: 'em contas',
+    paidSoFar: 'pago',
+    remaining: 'falta',
+    allPaidMonth: 'Tudo pago este mês! 🎉',
+    incomePerMonth: 'renda/mês',
+    leftoverEstimate: 'sobra estimada',
+    noBillsCurrency: 'Nenhuma conta nesta moeda ainda.',
+    // payday
+    nextPayday: 'Próximo pagamento',
+    dueUntilPayday: 'até lá',
+    today: 'Hoje',
+    tomorrow: 'Amanhã',
+    inDays: 'em {n} dias',
+    // sections
+    overdue: 'Atrasadas',
+    upcoming: 'Próximas',
+    noUpcoming: 'Nada por vir nos próximos 30 dias 🌴',
+    emptyHomeTitle: 'Começando do zero',
+    emptyHomeBody: 'Adicione a primeira conta ou renda de vocês no botão + aí embaixo.',
+    // occurrence rows
+    paid: 'Pago',
+    pay: 'Pagar',
+    unpay: 'Desfazer',
+    overdueBy: '{n}d de atraso',
+    dueToday: 'vence hoje',
+    parcel: 'Parcela {k}/{n}',
+    // kinds
+    bill: 'Conta',
+    subscription: 'Assinatura',
+    installment: 'Parcelado',
+    income: 'Renda',
+    kindBillHint: 'Aluguel, luz, água…',
+    kindSubHint: 'Netflix, Spotify, academia…',
+    kindInstHint: 'Compra parcelada no cartão',
+    kindIncomeHint: 'Salário, freela…',
+    // frequencies
+    weekly: 'Semanal',
+    fortnightly: 'Quinzenal',
+    monthly: 'Mensal',
+    yearly: 'Anual',
+    once: 'Única',
+    everyWeek: 'toda semana',
+    everyFortnight: 'a cada 14 dias',
+    everyMonth: 'todo mês',
+    everyYear: 'todo ano',
+    oneOff: 'única',
+    // form
+    addTitle: 'Adicionar',
+    editTitle: 'Editar',
+    name: 'Nome',
+    namePlaceholder: 'Ex: Aluguel',
+    incomeNamePlaceholder: 'Ex: Salário',
+    amount: 'Valor',
+    installmentAmount: 'Valor da parcela',
+    currency: 'Moeda',
+    category: 'Categoria',
+    owner: 'De quem é?',
+    frequency: 'Frequência',
+    firstDue: 'Primeiro vencimento',
+    dueDate: 'Vencimento',
+    nextPayDate: 'Próximo pagamento',
+    numInstallments: 'Nº de parcelas',
+    notes: 'Notas',
+    notesPlaceholder: 'Opcional',
+    save: 'Salvar',
+    cancel: 'Cancelar',
+    delete: 'Excluir',
+    deleteConfirm: 'Excluir de vez? O histórico de pagamentos some junto.',
+    invalidAmount: 'Valor inválido',
+    fillName: 'Dê um nome',
+    totalOfPlan: 'Total: {v}',
+    // categories
+    catRent: 'Moradia',
+    catUtilities: 'Luz/Água/Gás',
+    catInternet: 'Internet',
+    catPhone: 'Celular',
+    catGroceries: 'Mercado',
+    catTransport: 'Transporte',
+    catCar: 'Carro',
+    catHealth: 'Saúde',
+    catInsurance: 'Seguro',
+    catEducation: 'Educação',
+    catCard: 'Cartão',
+    catStreaming: 'Streaming',
+    catGym: 'Academia',
+    catTax: 'Impostos',
+    catTravel: 'Viagem',
+    catGift: 'Presente',
+    catOther: 'Outros',
+    // bills screen
+    searchPlaceholder: 'Buscar…',
+    all: 'Todas',
+    active: 'Ativas',
+    finished: 'Concluídas',
+    perMonthEq: '≈ {v}/mês',
+    noItems: 'Nenhuma conta por aqui ainda.',
+    finishedBadge: 'Concluída',
+    // income screen
+    incomesTitle: 'Renda',
+    noIncomes: 'Nenhuma renda cadastrada.',
+    incomeTotalMonth: 'Total estimado por mês',
+    nextOn: 'próximo em',
+    inactive: 'Pausada',
+    // settings
+    settingsTitle: 'Ajustes',
+    language: 'Idioma',
+    theme: 'Tema',
+    themeLight: 'Claro',
+    themeDark: 'Escuro',
+    themeAuto: 'Auto',
+    profiles: 'Perfis',
+    profileAName: 'Nome do perfil 1',
+    profileBName: 'Nome do perfil 2',
+    dataSection: 'Dados',
+    demoMode: 'Modo demonstração',
+    demoModeBody: 'Os dados estão só neste aparelho. Conecte ao Supabase para sincronizar com o celular de {name}.',
+    connectCloud: 'Conectar à nuvem',
+    signOut: 'Sair da conta',
+    signedInAs: 'Conectado como',
+    exportData: 'Exportar dados (JSON)',
+    resetDemo: 'Zerar dados de demonstração',
+    resetDemoConfirm: 'Apagar tudo do modo demo?',
+    about: 'Feito com ❤️ para dois.',
+    // welcome / auth
+    welcomeTitle: 'Contas do Casal',
+    welcomeSubtitle: 'AUD e BRL lado a lado, sincronizado entre os dois celulares.',
+    tryDemo: 'Experimentar sem conta',
+    tryDemoHint: 'dados só neste aparelho',
+    cloudLogin: 'Entrar com a nuvem',
+    cloudLoginHint: 'sincroniza vocês dois',
+    supabaseSetupTitle: 'Conectar Supabase',
+    supabaseSetupBody: 'Cole a URL e a chave pública (anon) do projeto de vocês. Isso fica salvo só neste aparelho.',
+    supabaseUrl: 'URL do projeto',
+    supabaseKey: 'Chave anon (public)',
+    supabaseHowTo: 'Como criar o projeto (grátis) →',
+    continueBtn: 'Continuar',
+    back: 'Voltar',
+    email: 'E-mail',
+    password: 'Senha',
+    signIn: 'Entrar',
+    signUp: 'Criar conta do casal',
+    authHint: 'Usem o mesmo e-mail e senha nos dois celulares.',
+    authErrorGeneric: 'Não deu certo: {msg}',
+    signUpDone: 'Conta criada! Se o projeto exige confirmação, veja o e-mail antes de entrar.',
+    loading: 'Carregando…',
+    syncing: 'Sincronizando…',
+    offline: 'Sem internet — mostrando a última versão',
+    // misc
+    close: 'Fechar',
+    edit: 'Editar',
+    confirm: 'Confirmar',
+    of: 'de',
+  },
+  en: {
+    appName: 'Couple Bills',
+    tagline: 'Both your finances, Australia and Brazil, in one place.',
+    couple: 'Couple',
+    tabHome: 'Home',
+    tabBills: 'Bills',
+    tabIncome: 'Income',
+    tabSettings: 'Settings',
+    goodMorning: 'Good morning',
+    goodAfternoon: 'Good afternoon',
+    goodEvening: 'Good evening',
+    thisMonth: 'this month',
+    ofBills: 'in bills',
+    paidSoFar: 'paid',
+    remaining: 'to go',
+    allPaidMonth: 'Everything paid this month! 🎉',
+    incomePerMonth: 'income/mo',
+    leftoverEstimate: 'est. leftover',
+    noBillsCurrency: 'No bills in this currency yet.',
+    nextPayday: 'Next payday',
+    dueUntilPayday: 'due by then',
+    today: 'Today',
+    tomorrow: 'Tomorrow',
+    inDays: 'in {n} days',
+    overdue: 'Overdue',
+    upcoming: 'Upcoming',
+    noUpcoming: 'Nothing due in the next 30 days 🌴',
+    emptyHomeTitle: 'A fresh start',
+    emptyHomeBody: 'Add your first bill or income with the + button below.',
+    paid: 'Paid',
+    pay: 'Pay',
+    unpay: 'Undo',
+    overdueBy: '{n}d overdue',
+    dueToday: 'due today',
+    parcel: 'Instalment {k}/{n}',
+    bill: 'Bill',
+    subscription: 'Subscription',
+    installment: 'Instalments',
+    income: 'Income',
+    kindBillHint: 'Rent, power, water…',
+    kindSubHint: 'Netflix, Spotify, gym…',
+    kindInstHint: 'Card purchase in instalments',
+    kindIncomeHint: 'Salary, freelance…',
+    weekly: 'Weekly',
+    fortnightly: 'Fortnightly',
+    monthly: 'Monthly',
+    yearly: 'Yearly',
+    once: 'One-off',
+    everyWeek: 'every week',
+    everyFortnight: 'every fortnight',
+    everyMonth: 'every month',
+    everyYear: 'every year',
+    oneOff: 'one-off',
+    addTitle: 'Add',
+    editTitle: 'Edit',
+    name: 'Name',
+    namePlaceholder: 'e.g. Rent',
+    incomeNamePlaceholder: 'e.g. Salary',
+    amount: 'Amount',
+    installmentAmount: 'Instalment amount',
+    currency: 'Currency',
+    category: 'Category',
+    owner: 'Whose is it?',
+    frequency: 'Frequency',
+    firstDue: 'First due date',
+    dueDate: 'Due date',
+    nextPayDate: 'Next payday',
+    numInstallments: 'Instalments',
+    notes: 'Notes',
+    notesPlaceholder: 'Optional',
+    save: 'Save',
+    cancel: 'Cancel',
+    delete: 'Delete',
+    deleteConfirm: 'Delete for good? Payment history goes with it.',
+    invalidAmount: 'Invalid amount',
+    fillName: 'Give it a name',
+    totalOfPlan: 'Total: {v}',
+    catRent: 'Housing',
+    catUtilities: 'Utilities',
+    catInternet: 'Internet',
+    catPhone: 'Phone',
+    catGroceries: 'Groceries',
+    catTransport: 'Transport',
+    catCar: 'Car',
+    catHealth: 'Health',
+    catInsurance: 'Insurance',
+    catEducation: 'Education',
+    catCard: 'Card',
+    catStreaming: 'Streaming',
+    catGym: 'Gym',
+    catTax: 'Tax',
+    catTravel: 'Travel',
+    catGift: 'Gifts',
+    catOther: 'Other',
+    searchPlaceholder: 'Search…',
+    all: 'All',
+    active: 'Active',
+    finished: 'Finished',
+    perMonthEq: '≈ {v}/mo',
+    noItems: 'No bills here yet.',
+    finishedBadge: 'Finished',
+    incomesTitle: 'Income',
+    noIncomes: 'No income added yet.',
+    incomeTotalMonth: 'Estimated monthly total',
+    nextOn: 'next on',
+    inactive: 'Paused',
+    settingsTitle: 'Settings',
+    language: 'Language',
+    theme: 'Theme',
+    themeLight: 'Light',
+    themeDark: 'Dark',
+    themeAuto: 'Auto',
+    profiles: 'Profiles',
+    profileAName: 'Profile 1 name',
+    profileBName: 'Profile 2 name',
+    dataSection: 'Data',
+    demoMode: 'Demo mode',
+    demoModeBody: 'Data lives only on this device. Connect Supabase to sync with {name}’s phone.',
+    connectCloud: 'Connect to cloud',
+    signOut: 'Sign out',
+    signedInAs: 'Signed in as',
+    exportData: 'Export data (JSON)',
+    resetDemo: 'Reset demo data',
+    resetDemoConfirm: 'Wipe all demo data?',
+    about: 'Made with ❤️ for two.',
+    welcomeTitle: 'Couple Bills',
+    welcomeSubtitle: 'AUD and BRL side by side, synced across both phones.',
+    tryDemo: 'Try without an account',
+    tryDemoHint: 'data stays on this device',
+    cloudLogin: 'Sign in with cloud',
+    cloudLoginHint: 'syncs both of you',
+    supabaseSetupTitle: 'Connect Supabase',
+    supabaseSetupBody: 'Paste your project URL and public (anon) key. Saved on this device only.',
+    supabaseUrl: 'Project URL',
+    supabaseKey: 'Anon (public) key',
+    supabaseHowTo: 'How to create the free project →',
+    continueBtn: 'Continue',
+    back: 'Back',
+    email: 'Email',
+    password: 'Password',
+    signIn: 'Sign in',
+    signUp: 'Create couple account',
+    authHint: 'Use the same email and password on both phones.',
+    authErrorGeneric: 'That didn’t work: {msg}',
+    signUpDone: 'Account created! If your project requires it, confirm the email before signing in.',
+    loading: 'Loading…',
+    syncing: 'Syncing…',
+    offline: 'Offline — showing the last known data',
+    close: 'Close',
+    edit: 'Edit',
+    confirm: 'Confirm',
+    of: 'of',
+  },
+} as const
+
+export type TKey = keyof (typeof dict)['pt']
+
+interface I18n {
+  lang: Lang
+  locale: string
+  t: (key: TKey, vars?: Record<string, string | number>) => string
+  setLang: (lang: Lang) => void
+}
+
+const I18nContext = createContext<I18n | null>(null)
+
+function detectLang(): Lang {
+  const saved = localStorage.getItem(STORAGE_KEY)
+  if (saved === 'pt' || saved === 'en') return saved
+  return navigator.language?.toLowerCase().startsWith('pt') ? 'pt' : 'en'
+}
+
+export function I18nProvider({ children }: { children: ReactNode }) {
+  const [lang, setLangState] = useState<Lang>(detectLang)
+
+  const setLang = useCallback((l: Lang) => {
+    localStorage.setItem(STORAGE_KEY, l)
+    setLangState(l)
+    document.documentElement.lang = l === 'pt' ? 'pt-BR' : 'en'
+  }, [])
+
+  const value = useMemo<I18n>(() => {
+    const locale = lang === 'pt' ? 'pt-BR' : 'en-AU'
+    const t = (key: TKey, vars?: Record<string, string | number>) => {
+      let s: string = dict[lang][key] ?? dict.pt[key] ?? key
+      if (vars) for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, String(v))
+      return s
+    }
+    return { lang, locale, t, setLang }
+  }, [lang, setLang])
+
+  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>
+}
+
+export function useI18n(): I18n {
+  const ctx = useContext(I18nContext)
+  if (!ctx) throw new Error('useI18n outside provider')
+  return ctx
+}
+
+export function formatDay(iso: string, locale: string): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Intl.DateTimeFormat(locale, { weekday: 'short', day: 'numeric', month: 'short' }).format(
+    new Date(y, m - 1, d)
+  )
+}
+
+export function formatFullDate(iso: string, locale: string): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'long', year: 'numeric' }).format(
+    new Date(y, m - 1, d)
+  )
+}

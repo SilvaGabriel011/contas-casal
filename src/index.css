@@ -1,0 +1,177 @@
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg: #f2f4f7;
+  --card: #ffffff;
+  --card-2: #f6f7f9;
+  --ink: #131922;
+  --ink-2: #69707d;
+  --line: rgba(15, 23, 42, 0.09);
+  --accent: #6d5cf6;
+  --accent-2: #ff5c8a;
+  --good: #16a34a;
+  --bad: #e5484d;
+  --aud-a: #0284c7;
+  --aud-b: #0d9488;
+  --brl-a: #059450;
+  --brl-b: #b7950b;
+  --glass: rgba(248, 249, 251, 0.82);
+}
+
+.dark {
+  --bg: #0b0e13;
+  --card: #161b23;
+  --card-2: #1d232d;
+  --ink: #eef1f6;
+  --ink-2: #8b94a5;
+  --line: rgba(255, 255, 255, 0.09);
+  --accent: #8d7bff;
+  --accent-2: #ff6d96;
+  --good: #34d399;
+  --bad: #f2555a;
+  --aud-a: #0ea5e9;
+  --aud-b: #14b8a6;
+  --brl-a: #10b981;
+  --brl-b: #d4b106;
+  --glass: rgba(13, 16, 22, 0.8);
+}
+
+@theme inline {
+  --color-app: var(--bg);
+  --color-card: var(--card);
+  --color-card2: var(--card-2);
+  --color-ink: var(--ink);
+  --color-ink2: var(--ink-2);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent2: var(--accent-2);
+  --color-good: var(--good);
+  --color-bad: var(--bad);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+  touch-action: manipulation;
+}
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
+  color: inherit;
+}
+
+/* iOS zooms in on inputs below 16px */
+input,
+select,
+textarea {
+  font-size: 16px;
+}
+
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.glass {
+  background: var(--glass);
+  -webkit-backdrop-filter: saturate(180%) blur(18px);
+  backdrop-filter: saturate(180%) blur(18px);
+}
+
+.grad-aud {
+  background: linear-gradient(135deg, var(--aud-a), var(--aud-b));
+}
+.grad-brl {
+  background: linear-gradient(135deg, var(--brl-a), var(--brl-b));
+}
+.grad-accent {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+}
+
+.press {
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+.press:active {
+  transform: scale(0.96);
+  opacity: 0.85;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes pop {
+  0% {
+    transform: scale(0.4);
+  }
+  60% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.anim-sheet {
+  animation: sheet-in 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.anim-fade {
+  animation: fade-in 0.25s ease;
+}
+.anim-pop {
+  animation: pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.anim-rise {
+  animation: rise 0.3s ease both;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}

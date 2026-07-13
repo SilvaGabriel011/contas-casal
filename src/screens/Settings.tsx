@@ -1,0 +1,129 @@
+import { useEffect, useState } from 'react'
+import { useAppData } from '../data/DataProvider'
+import { useI18n, type Lang } from '../lib/i18n'
+import { useTheme, type Theme } from '../lib/theme'
+import { Field, inputCls, Segmented } from '../components/ui'
+
+export function Settings() {
+  const { snapshot, saveSettings, mode, userEmail, signOut, backToWelcome, resetDemo } = useAppData()
+  const { t, lang, setLang } = useI18n()
+  const { theme, setTheme } = useTheme()
+
+  const [nameA, setNameA] = useState(snapshot.settings.nameA)
+  const [nameB, setNameB] = useState(snapshot.settings.nameB)
+
+  useEffect(() => {
+    setNameA(snapshot.settings.nameA)
+    setNameB(snapshot.settings.nameB)
+  }, [snapshot.settings])
+
+  const persistNames = () => {
+    const a = nameA.trim() || snapshot.settings.nameA
+    const b = nameB.trim() || snapshot.settings.nameB
+    if (a !== snapshot.settings.nameA || b !== snapshot.settings.nameB) {
+      saveSettings({ nameA: a, nameB: b })
+    }
+  }
+
+  const exportJson = () => {
+    const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'contas-casal.json'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  return (
+    <div className="space-y-5">
+      <header className="pt-2">
+        <h1 className="text-2xl font-extrabold tracking-tight text-ink">{t('settingsTitle')}</h1>
+      </header>
+
+      <section className="space-y-4 rounded-3xl border border-line bg-card p-5">
+        <Field label={`🌐 ${t('language')}`}>
+          <Segmented<Lang>
+            options={[
+              { value: 'pt', label: '🇧🇷 Português' },
+              { value: 'en', label: '🇦🇺 English' },
+            ]}
+            value={lang}
+            onChange={setLang}
+          />
+        </Field>
+        <Field label={`🎨 ${t('theme')}`}>
+          <Segmented<Theme>
+            options={[
+              { value: 'light', label: `☀️ ${t('themeLight')}` },
+              { value: 'dark', label: `🌙 ${t('themeDark')}` },
+              { value: 'auto', label: t('themeAuto') },
+            ]}
+            value={theme}
+            onChange={setTheme}
+          />
+        </Field>
+      </section>
+
+      <section className="space-y-4 rounded-3xl border border-line bg-card p-5">
+        <p className="text-[13px] font-extrabold tracking-wide text-ink2 uppercase">{t('profiles')}</p>
+        <Field label={t('profileAName')}>
+          <input className={inputCls} value={nameA} onChange={(e) => setNameA(e.target.value)} onBlur={persistNames} />
+        </Field>
+        <Field label={t('profileBName')}>
+          <input className={inputCls} value={nameB} onChange={(e) => setNameB(e.target.value)} onBlur={persistNames} />
+        </Field>
+      </section>
+
+      <section className="space-y-3 rounded-3xl border border-line bg-card p-5">
+        <p className="text-[13px] font-extrabold tracking-wide text-ink2 uppercase">{t('dataSection')}</p>
+
+        {mode === 'demo' ? (
+          <>
+            <div className="rounded-2xl bg-card2 p-3.5">
+              <p className="text-sm font-bold text-ink">🧪 {t('demoMode')}</p>
+              <p className="mt-1 text-[13px] leading-relaxed text-ink2">
+                {t('demoModeBody', { name: snapshot.settings.nameB })}
+              </p>
+            </div>
+            <button
+              onClick={backToWelcome}
+              className="press grad-accent w-full rounded-2xl py-3.5 text-[15px] font-bold text-white"
+            >
+              ☁️ {t('connectCloud')}
+            </button>
+            <button
+              onClick={() => confirm(t('resetDemoConfirm')) && resetDemo()}
+              className="press w-full rounded-2xl border border-line py-3 text-[14px] font-semibold text-bad"
+            >
+              {t('resetDemo')}
+            </button>
+          </>
+        ) : (
+          <>
+            {userEmail && (
+              <p className="text-[13px] text-ink2">
+                {t('signedInAs')} <span className="font-semibold text-ink">{userEmail}</span>
+              </p>
+            )}
+            <button
+              onClick={signOut}
+              className="press w-full rounded-2xl border border-line py-3 text-[14px] font-semibold text-bad"
+            >
+              {t('signOut')}
+            </button>
+          </>
+        )}
+
+        <button
+          onClick={exportJson}
+          className="press w-full rounded-2xl border border-line py-3 text-[14px] font-semibold text-ink"
+        >
+          📤 {t('exportData')}
+        </button>
+      </section>
+
+      <p className="pb-2 text-center text-[12px] text-ink2">{t('about')}</p>
+    </div>
+  )
+}
