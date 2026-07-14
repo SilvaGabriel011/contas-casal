@@ -1,6 +1,7 @@
 import type { HouseholdSettings, Income, Item, Payment, Snapshot } from '../types'
 import { addDays, addMonthsClamped, todayISO } from '../lib/dates'
 import { DEFAULT_SETTINGS, type DataAdapter } from './adapter'
+import * as reduce from './reducers'
 
 const KEY = 'cc.demo.v1'
 
@@ -45,49 +46,37 @@ export class LocalAdapter implements DataAdapter {
   }
 
   async upsertItem(item: Item) {
-    const items = this.snap.items.filter((i) => i.id !== item.id)
-    this.snap = { ...this.snap, items: [...items, item] }
+    this.snap = reduce.upsertItem(this.snap, item)
     this.commit()
   }
 
   async deleteItem(id: string) {
-    this.snap = {
-      ...this.snap,
-      items: this.snap.items.filter((i) => i.id !== id),
-      payments: this.snap.payments.filter((p) => p.itemId !== id),
-    }
+    this.snap = reduce.deleteItem(this.snap, id)
     this.commit()
   }
 
   async upsertIncome(income: Income) {
-    const incomes = this.snap.incomes.filter((i) => i.id !== income.id)
-    this.snap = { ...this.snap, incomes: [...incomes, income] }
+    this.snap = reduce.upsertIncome(this.snap, income)
     this.commit()
   }
 
   async deleteIncome(id: string) {
-    this.snap = { ...this.snap, incomes: this.snap.incomes.filter((i) => i.id !== id) }
+    this.snap = reduce.deleteIncome(this.snap, id)
     this.commit()
   }
 
   async addPayment(payment: Payment) {
-    const payments = this.snap.payments.filter(
-      (p) => !(p.itemId === payment.itemId && p.dueDate === payment.dueDate)
-    )
-    this.snap = { ...this.snap, payments: [...payments, payment] }
+    this.snap = reduce.putPayment(this.snap, payment)
     this.commit()
   }
 
   async removePayment(itemId: string, dueDate: string) {
-    this.snap = {
-      ...this.snap,
-      payments: this.snap.payments.filter((p) => !(p.itemId === itemId && p.dueDate === dueDate)),
-    }
+    this.snap = reduce.removePayment(this.snap, itemId, dueDate)
     this.commit()
   }
 
   async saveSettings(settings: HouseholdSettings) {
-    this.snap = { ...this.snap, settings }
+    this.snap = reduce.putSettings(this.snap, settings)
     this.commit()
   }
 }

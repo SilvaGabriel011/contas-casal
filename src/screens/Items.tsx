@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import type { Currency, Item, Profile } from '../types'
 import { categoryEmoji } from '../lib/categories'
+import { FREQ_EVERY } from '../lib/kinds'
+import { ownerLabel } from '../lib/owners'
 import { useAppData } from '../data/DataProvider'
-import { useI18n, type TKey } from '../lib/i18n'
+import { useI18n } from '../lib/i18n'
 import { formatMoney, formatMoneyShort, CURRENCY_FLAG } from '../lib/money'
-import { todayISO } from '../lib/dates'
 import { installmentProgress, isItemFinished, monthlyEquivalent, visibleToProfile } from '../lib/schedule'
 import { ProfileSwitcher } from '../components/ProfileSwitcher'
 import { Chip, EmptyState, inputCls } from '../components/ui'
@@ -25,7 +26,6 @@ export function Items({
   const [search, setSearch] = useState('')
   const [currency, setCurrency] = useState<Currency | 'all'>('all')
   const [status, setStatus] = useState<StatusFilter>('active')
-  const today = todayISO()
 
   const items = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -38,15 +38,7 @@ export function Items({
       })
       .filter((i) => !q || i.name.toLowerCase().includes(q))
       .sort((a, b) => a.name.localeCompare(b.name))
-  }, [snapshot.items, snapshot.payments, profile, currency, status, search, today])
-
-  const freqLabel: Record<string, TKey> = {
-    weekly: 'everyWeek',
-    fortnightly: 'everyFortnight',
-    monthly: 'everyMonth',
-    yearly: 'everyYear',
-    once: 'oneOff',
-  }
+  }, [snapshot.items, snapshot.payments, profile, currency, status, search])
 
   return (
     <div className="space-y-4">
@@ -95,12 +87,7 @@ export function Items({
               item.kind === 'installment' && item.installmentsTotal
                 ? installmentProgress(item, snapshot.payments)
                 : null
-            const ownerName =
-              item.owner === 'a'
-                ? snapshot.settings.nameA
-                : item.owner === 'b'
-                  ? snapshot.settings.nameB
-                  : t('couple')
+            const ownerName = ownerLabel(item.owner, snapshot.settings, t)
             return (
               <button
                 key={item.id}
@@ -124,7 +111,7 @@ export function Items({
                   <span className="mt-0.5 block text-[12px] text-ink2">
                     {progress
                       ? `${t('parcel', { k: Math.min(progress.paid + 1, progress.total), n: progress.total })} · ${ownerName}`
-                      : `${t(freqLabel[item.frequency])} · ${ownerName}`}
+                      : `${t(FREQ_EVERY[item.frequency])} · ${ownerName}`}
                   </span>
                   {progress && (
                     <span className="mt-1.5 block h-1 w-full overflow-hidden rounded-full bg-card2">

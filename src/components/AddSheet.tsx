@@ -4,7 +4,9 @@ import { CATEGORIES } from '../types'
 import { useAppData } from '../data/DataProvider'
 import { useI18n, type TKey } from '../lib/i18n'
 import { CAT_KEY, categoryEmoji, categoryLabel } from '../lib/categories'
-import { formatMoney, parseAmount } from '../lib/money'
+import { FREQ_EVERY, ITEM_KINDS, KIND_CONFIG } from '../lib/kinds'
+import { formatAmountInput, formatMoney, parseAmount } from '../lib/money'
+import { hourlyPerCycle } from '../lib/schedule'
 import { todayISO } from '../lib/dates'
 import { Chip, Field, inputCls, Segmented, Sheet } from './ui'
 
@@ -24,7 +26,7 @@ export function AddSheet({
   defaultOwner: Owner
 }) {
   const { snapshot, upsertItem, deleteItem, upsertIncome, deleteIncome, saveSettings } = useAppData()
-  const { t, locale } = useI18n()
+  const { t, lang, locale, decimalSep } = useI18n()
   const editing = Boolean(editItem || editIncome)
 
   const [kind, setKind] = useState<FormKind>('bill')
@@ -56,7 +58,7 @@ export function AddSheet({
     if (editItem) {
       setKind(editItem.kind)
       setName(editItem.name)
-      setAmountRaw(String(editItem.amount).replace('.', locale.startsWith('pt') ? ',' : '.'))
+      setAmountRaw(formatAmountInput(editItem.amount, decimalSep))
       setCurrency(editItem.currency)
       setOwner(editItem.owner)
       setCategory(editItem.category)
@@ -67,7 +69,7 @@ export function AddSheet({
     } else if (editIncome) {
       setKind('income')
       setName(editIncome.name)
-      setAmountRaw(String(editIncome.amount).replace('.', locale.startsWith('pt') ? ',' : '.'))
+      setAmountRaw(formatAmountInput(editIncome.amount, decimalSep))
       setCurrency(editIncome.currency)
       setOwner(editIncome.owner)
       setFrequency(editIncome.frequency)
@@ -75,11 +77,7 @@ export function AddSheet({
       setIncomeActive(editIncome.active)
       const hourly = Boolean(editIncome.hourlyRate && editIncome.hoursPerDay && editIncome.daysPerWeek)
       setBasis(hourly ? 'hourly' : 'fixed')
-      setRateRaw(
-        editIncome.hourlyRate
-          ? String(editIncome.hourlyRate).replace('.', locale.startsWith('pt') ? ',' : '.')
-          : ''
-      )
+      setRateRaw(editIncome.hourlyRate ? formatAmountInput(editIncome.hourlyRate, decimalSep) : '')
       setHoursPerDay(String(editIncome.hoursPerDay ?? 8))
       setDaysPerWeek(String(editIncome.daysPerWeek ?? 5))
     } else {
@@ -99,43 +97,33 @@ export function AddSheet({
       setHoursPerDay('8')
       setDaysPerWeek('5')
     }
-  }, [open, editItem, editIncome, defaultOwner, locale])
+  }, [open, editItem, editIncome, defaultOwner, decimalSep])
 
   const setKindPreset = (k: FormKind) => {
     setKind(k)
-    if (k === 'installment') {
-      setCurrency('BRL')
-      setCategory('card')
-      setFrequency('monthly')
-    } else if (k === 'subscription') {
-      setCategory('streaming')
-      setFrequency('monthly')
-    } else if (k === 'purchase') {
-      setCategory('shopping')
-      setFrequency('once')
-    } else if (k === 'income') {
+    if (k === 'income') {
       setFrequency('fortnightly')
       if (owner === 'shared') setOwner('a')
-    } else {
-      setCategory('rent')
-      setFrequency('monthly')
+      return
     }
+    const cfg = KIND_CONFIG[k]
+    setCategory(cfg.defaultCategory)
+    setFrequency(cfg.forcedFrequency ?? 'monthly')
+    if (cfg.presetCurrency) setCurrency(cfg.presetCurrency)
   }
 
-  const decimalSep = locale.startsWith('pt') ? ',' : '.'
   const amount = parseAmount(amountRaw, decimalSep)
   const nInstallments = Math.max(1, Math.floor(Number(installments) || 0))
-  const customCategories = snapshot.settings.customCategories ?? []
+  const customCategories = snapshot.settings.customCategories
 
   const isHourlyIncome = kind === 'income' && basis === 'hourly'
   const rate = parseAmount(rateRaw, decimalSep)
   const nHoursPerDay = parseAmount(hoursPerDay, decimalSep) ?? 0
   const nDaysPerWeek = parseAmount(daysPerWeek, decimalSep) ?? 0
   const weeklyHours = nHoursPerDay * nDaysPerWeek
-  const hourlyPerCycle =
-    rate !== null && weeklyHours > 0
-      ? rate * weeklyHours * (frequency === 'weekly' ? 1 : frequency === 'fortnightly' ? 2 : 52 / 12)
-      : null
+  const incomeFrequency: IncomeFrequency = frequency === 'yearly' || frequency === 'once' ? 'monthly' : frequency
+  const cyclePay =
+    rate !== null && weeklyHours > 0 ? hourlyPerCycle(rate, nHoursPerDay, nDaysPerWeek, incomeFrequency) : null
 
   const createCategory = async () => {
     const label = newCatName.trim()
@@ -154,51 +142,47 @@ export function AddSheet({
 
   const save = async () => {
     if (!name.trim()) return setError(t('fillName'))
-    const incomeAmount = isHourlyIncome ? hourlyPerCycle : amount
-    if (kind === 'income') {
-      if (incomeAmount === null || incomeAmount <= 0) return setError(t('invalidAmount'))
-    } else if (amount === null || amount <= 0) {
-      return setError(t('invalidAmount'))
-    }
     if (editItem && !snapshot.items.some((i) => i.id === editItem.id)) return setError(t('deletedElsewhere'))
     if (editIncome && !snapshot.incomes.some((i) => i.id === editIncome.id))
       return setError(t('deletedElsewhere'))
 
     if (kind === 'income') {
-      const income: Income = {
+      const cycleAmount = isHourlyIncome ? cyclePay : amount
+      if (cycleAmount === null || cycleAmount <= 0) return setError(t('invalidAmount'))
+      await upsertIncome({
         id: editIncome?.id ?? crypto.randomUUID(),
         name: name.trim(),
         owner,
-        amount: Math.round(incomeAmount! * 100) / 100,
+        amount: Math.round(cycleAmount * 100) / 100,
         currency,
-        frequency: frequency as IncomeFrequency,
+        frequency: incomeFrequency,
         nextDate: startDate,
         active: incomeActive,
         hourlyRate: isHourlyIncome ? rate : null,
         hoursPerDay: isHourlyIncome ? nHoursPerDay : null,
         daysPerWeek: isHourlyIncome ? nDaysPerWeek : null,
         createdAt: editIncome?.createdAt ?? new Date().toISOString(),
-      }
-      await upsertIncome(income)
-    } else {
-      const item: Item = {
-        id: editItem?.id ?? crypto.randomUUID(),
-        kind,
-        name: name.trim(),
-        category,
-        // guarded above: for non-income kinds amount is validated non-null
-        amount: amount!,
-        currency,
-        owner,
-        frequency: kind === 'installment' ? 'monthly' : kind === 'purchase' ? 'once' : frequency,
-        startDate,
-        installmentsTotal: kind === 'installment' ? nInstallments : null,
-        notes: notes.trim() || null,
-        archived: editItem?.archived ?? false,
-        createdAt: editItem?.createdAt ?? new Date().toISOString(),
-      }
-      await upsertItem(item)
+      })
+      return onClose()
     }
+
+    if (amount === null || amount <= 0) return setError(t('invalidAmount'))
+    const item: Item = {
+      id: editItem?.id ?? crypto.randomUUID(),
+      kind,
+      name: name.trim(),
+      category,
+      amount,
+      currency,
+      owner,
+      frequency: KIND_CONFIG[kind].forcedFrequency ?? frequency,
+      startDate,
+      installmentsTotal: kind === 'installment' ? nInstallments : null,
+      notes: notes.trim() || null,
+      archived: editItem?.archived ?? false,
+      createdAt: editItem?.createdAt ?? new Date().toISOString(),
+    }
+    await upsertItem(item)
     onClose()
   }
 
@@ -209,13 +193,6 @@ export function AddSheet({
     onClose()
   }
 
-  const expenseKinds: { value: ItemKind; emoji: string; label: string; hint: string }[] = [
-    { value: 'bill', emoji: '🧾', label: t('bill'), hint: t('kindBillHint') },
-    { value: 'subscription', emoji: '🔁', label: t('subscription'), hint: t('kindSubHint') },
-    { value: 'installment', emoji: '💳', label: t('installment'), hint: t('kindInstHint') },
-    { value: 'purchase', emoji: '🛍️', label: t('purchase'), hint: t('kindPurchaseHint') },
-  ]
-
   const incomeFreqOptions: IncomeFrequency[] = ['weekly', 'fortnightly', 'monthly']
   const itemFreqOptions: Frequency[] = ['weekly', 'fortnightly', 'monthly', 'yearly', 'once']
 
@@ -225,15 +202,14 @@ export function AddSheet({
     ...(kind === 'income' ? [] : [{ value: 'shared' as Owner, label: t('couple') }]),
   ]
 
-  const showFrequency = kind !== 'installment' && kind !== 'purchase'
+  const kindConfig = kind === 'income' ? null : KIND_CONFIG[kind]
+  const showFrequency = !kindConfig?.forcedFrequency
   const dateLabel =
     kind === 'income'
       ? t('nextPayDate')
-      : kind === 'purchase'
-        ? t('purchaseDate')
-        : kind !== 'installment' && frequency === 'once'
-          ? t('dueDate')
-          : t('firstDue')
+      : frequency === 'once' && kind !== 'purchase'
+        ? t('dueDate')
+        : t(KIND_CONFIG[kind].dateLabelKey)
 
   return (
     <Sheet open={open} onClose={onClose} title={editing ? t('editTitle') : t('addTitle')}>
@@ -251,17 +227,17 @@ export function AddSheet({
 
             {kind !== 'income' && (
               <div className="grid grid-cols-2 gap-2">
-                {expenseKinds.map((k) => (
+                {ITEM_KINDS.map((k) => (
                   <button
-                    key={k.value}
-                    onClick={() => setKindPreset(k.value)}
+                    key={k}
+                    onClick={() => setKindPreset(k)}
                     className={`press rounded-2xl border p-3 text-left transition-all ${
-                      kind === k.value ? 'border-accent bg-card shadow-sm' : 'border-line bg-card2'
+                      kind === k ? 'border-accent bg-card shadow-sm' : 'border-line bg-card2'
                     }`}
                   >
-                    <span className="text-xl">{k.emoji}</span>
-                    <span className="mt-1 block text-sm font-bold text-ink">{k.label}</span>
-                    <span className="block text-[11px] leading-tight text-ink2">{k.hint}</span>
+                    <span className="text-xl">{KIND_CONFIG[k].emoji}</span>
+                    <span className="mt-1 block text-sm font-bold text-ink">{t(KIND_CONFIG[k].labelKey)}</span>
+                    <span className="block text-[11px] leading-tight text-ink2">{t(KIND_CONFIG[k].hintKey)}</span>
                   </button>
                 ))}
               </div>
@@ -294,11 +270,7 @@ export function AddSheet({
         <div className="grid grid-cols-2 gap-3">
           <Field
             label={
-              isHourlyIncome
-                ? t('hourlyRateLabel')
-                : kind === 'installment'
-                  ? t('installmentAmount')
-                  : t('amount')
+              isHourlyIncome ? t('hourlyRateLabel') : kindConfig ? t(kindConfig.amountLabelKey) : t('amount')
             }
           >
             <input
@@ -347,19 +319,10 @@ export function AddSheet({
                 />
               </Field>
             </div>
-            {hourlyPerCycle !== null && (
+            {cyclePay !== null && (
               <p className="num anim-rise rounded-2xl bg-card2 px-4 py-3 text-[13px] font-bold text-ink">
-                ⏱️ {weeklyHours}h/{locale.startsWith('pt') ? 'sem' : 'wk'} ={' '}
-                {formatMoney(hourlyPerCycle, currency, locale)}{' '}
-                <span className="font-semibold text-ink2">
-                  {t(
-                    (frequency === 'weekly'
-                      ? 'everyWeek'
-                      : frequency === 'fortnightly'
-                        ? 'everyFortnight'
-                        : 'everyMonth') as TKey
-                  )}
-                </span>
+                ⏱️ {weeklyHours}h/{lang === 'pt' ? 'sem' : 'wk'} = {formatMoney(cyclePay, currency, locale)}{' '}
+                <span className="font-semibold text-ink2">{t(FREQ_EVERY[incomeFrequency])}</span>
               </p>
             )}
           </>
@@ -400,7 +363,7 @@ export function AddSheet({
             <Field label={t('frequency')}>
               <Segmented
                 options={incomeFreqOptions.map((f) => ({ value: f, label: t(f as TKey) }))}
-                value={frequency as IncomeFrequency}
+                value={incomeFrequency}
                 onChange={(f) => setFrequency(f)}
               />
             </Field>

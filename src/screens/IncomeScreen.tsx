@@ -1,7 +1,9 @@
 import { useMemo } from 'react'
 import type { Currency, Income, Profile } from '../types'
+import { FREQ_EVERY } from '../lib/kinds'
+import { ownerLabel } from '../lib/owners'
 import { useAppData } from '../data/DataProvider'
-import { useI18n, formatDay, type TKey } from '../lib/i18n'
+import { useI18n, formatDay } from '../lib/i18n'
 import { formatMoney, formatMoneyShort, CURRENCY_FLAG } from '../lib/money'
 import { addDays, endOfMonth, startOfMonth, todayISO } from '../lib/dates'
 import { hourlyInfo, incomeDates, monthlyEquivalent, nextIncomeDate, visibleToProfile } from '../lib/schedule'
@@ -118,18 +120,7 @@ export function IncomeScreen({
     return out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)).slice(0, 8)
   }, [activeIncomes, today])
 
-  const ownerName = (income: Income) =>
-    income.owner === 'a'
-      ? snapshot.settings.nameA
-      : income.owner === 'b'
-        ? snapshot.settings.nameB
-        : t('couple')
-
-  const freqLabel: Record<string, TKey> = {
-    weekly: 'everyWeek',
-    fortnightly: 'everyFortnight',
-    monthly: 'everyMonth',
-  }
+  const ownerName = (income: Income) => ownerLabel(income.owner, snapshot.settings, t)
 
   return (
     <div className="space-y-4">
@@ -198,7 +189,7 @@ export function IncomeScreen({
                     )}
                   </span>
                   <span className="mt-0.5 block text-[12px] text-ink2">
-                    {t(freqLabel[income.frequency])} · {ownerName(income)} · {t('nextOn')}{' '}
+                    {t(FREQ_EVERY[income.frequency])} · {ownerName(income)} · {t('nextOn')}{' '}
                     {formatDay(next, locale)}
                   </span>
                   {hourly && income.hourlyRate && (

@@ -5,6 +5,7 @@ import { useI18n, formatDay } from '../lib/i18n'
 import { formatMoneyShort } from '../lib/money'
 import { addDays, daysBetween, endOfMonth, startOfMonth, todayISO } from '../lib/dates'
 import { buildOccurrences, monthlyEquivalent, nextPayday, visibleToProfile } from '../lib/schedule'
+import { personName } from '../lib/owners'
 import { ProfileSwitcher } from '../components/ProfileSwitcher'
 import { SummaryCard } from '../components/SummaryCard'
 import { OccurrenceRow } from '../components/OccurrenceRow'
@@ -76,11 +77,9 @@ export function Home({
   const hour = new Date().getHours()
   const greeting = hour < 12 ? t('goodMorning') : hour < 18 ? t('goodAfternoon') : t('goodEvening')
   const profileName =
-    profile === 'a'
-      ? snapshot.settings.nameA
-      : profile === 'b'
-        ? snapshot.settings.nameB
-        : `${snapshot.settings.nameA} & ${snapshot.settings.nameB}`
+    profile === 'shared'
+      ? `${snapshot.settings.nameA} & ${snapshot.settings.nameB}`
+      : personName(profile, snapshot.settings)
 
   const monthLabel = new Intl.DateTimeFormat(locale, { month: 'long' }).format(new Date())
 

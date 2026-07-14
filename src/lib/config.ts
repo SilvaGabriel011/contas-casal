@@ -22,13 +22,23 @@ export function setMode(mode: AppMode | null) {
   else localStorage.removeItem(MODE_KEY)
 }
 
+// Re-validated on every read so a poisoned localStorage entry can never point
+// the client at a non-Supabase or non-HTTPS host.
+export const SUPABASE_URL_RE = /^https:\/\/[a-z0-9-]+\.supabase\.co$/
+
 export function getCloudConfig(): CloudConfig | null {
   if (ENV_URL && ENV_KEY) return { url: ENV_URL, anonKey: ENV_KEY }
   try {
     const raw = localStorage.getItem(CLOUD_KEY)
     if (!raw) return null
     const parsed = JSON.parse(raw)
-    if (typeof parsed.url === 'string' && typeof parsed.anonKey === 'string') return parsed
+    if (
+      typeof parsed.url === 'string' &&
+      SUPABASE_URL_RE.test(parsed.url) &&
+      typeof parsed.anonKey === 'string'
+    ) {
+      return parsed
+    }
   } catch {
     /* corrupted config falls through to null */
   }
@@ -43,6 +53,3 @@ export function saveCloudConfig(cfg: CloudConfig) {
   localStorage.setItem(CLOUD_KEY, JSON.stringify(cfg))
 }
 
-export function clearCloudConfig() {
-  localStorage.removeItem(CLOUD_KEY)
-}

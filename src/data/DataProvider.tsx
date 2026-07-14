@@ -3,7 +3,6 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -14,6 +13,7 @@ import { getCloudConfig, getMode, saveCloudConfig, setMode, type AppMode, type C
 import { EMPTY_SNAPSHOT, type DataAdapter } from './adapter'
 import { LocalAdapter, resetDemoData } from './localAdapter'
 import { getSupabase, SupabaseAdapter } from './supabaseAdapter'
+import * as reduce from './reducers'
 
 type Status = 'boot' | 'welcome' | 'auth' | 'ready'
 
@@ -21,7 +21,6 @@ interface AppData {
   status: Status
   mode: AppMode | null
   snapshot: Snapshot
-  loading: boolean
   userEmail: string | null
   saveError: boolean
   dismissSaveError: () => void
@@ -60,7 +59,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>('boot')
   const [mode, setModeState] = useState<AppMode | null>(null)
   const [snapshot, setSnapshot] = useState<Snapshot>(EMPTY_SNAPSHOT)
-  const [loading, setLoading] = useState(false)
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [saveError, setSaveError] = useState(false)
   const adapterRef = useRef<DataAdapter | null>(null)
@@ -84,19 +82,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     refetchTimer.current = setTimeout(refetch, 250)
   }, [refetch])
 
-  const startAdapter = useCallback(
-    async (adapter: DataAdapter) => {
-      adapterRef.current = adapter
-      setLoading(true)
-      try {
-        setSnapshot(await adapter.load())
-        setStatus('ready')
-      } finally {
-        setLoading(false)
-      }
-    },
-    []
-  )
+  const startAdapter = useCallback(async (adapter: DataAdapter) => {
+    adapterRef.current = adapter
+    setSnapshot(await adapter.load())
+    setStatus('ready')
+  }, [])
 
   const teardownCloud = useCallback(() => {
     unsubDataRef.current?.()
@@ -228,27 +218,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setStatus('auth')
   }, [])
 
-  const connectSession = useCallback(async () => {
-    const cfg = getCloudConfig()
-    if (!cfg) return
-    const sb = getSupabase(cfg)
-    const { data } = await sb.auth.getSession()
-    const session = data.session
-    if (!session) return
-    await startCloudAdapter(sb, session.user.id, session.user.email ?? null)
-  }, [startCloudAdapter])
-
   const signIn = useCallback(
     async (email: string, password: string): Promise<string | null> => {
       const cfg = getCloudConfig()
       if (!cfg) return 'missing-config'
       const sb = getSupabase(cfg)
-      const { error } = await sb.auth.signInWithPassword({ email, password })
+      const { data, error } = await sb.auth.signInWithPassword({ email, password })
       if (error) return error.message
-      await connectSession()
+      await startCloudAdapter(sb, data.session.user.id, data.session.user.email ?? null)
       return null
     },
-    [connectSession]
+    [startCloudAdapter]
   )
 
   const signUp = useCallback(
@@ -259,10 +239,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const { data, error } = await sb.auth.signUp({ email, password })
       if (error) return error.message
       if (!data.session) return 'confirm-email'
-      await connectSession()
+      await startCloudAdapter(sb, data.session.user.id, data.session.user.email ?? null)
       return null
     },
-    [connectSession]
+    [startCloudAdapter]
   )
 
   const signOut = useCallback(async () => {
@@ -306,83 +286,48 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const dismissSaveError = useCallback(() => setSaveError(false), [])
 
   const upsertItem = useCallback(
-    (item: Item) =>
-      mutate(
-        (s) => ({ ...s, items: [...s.items.filter((i) => i.id !== item.id), item] }),
-        (a) => a.upsertItem(item)
-      ),
+    (item: Item) => mutate((s) => reduce.upsertItem(s, item), (a) => a.upsertItem(item)),
     [mutate]
   )
 
   const deleteItem = useCallback(
-    (id: string) =>
-      mutate(
-        (s) => ({
-          ...s,
-          items: s.items.filter((i) => i.id !== id),
-          payments: s.payments.filter((p) => p.itemId !== id),
-        }),
-        (a) => a.deleteItem(id)
-      ),
+    (id: string) => mutate((s) => reduce.deleteItem(s, id), (a) => a.deleteItem(id)),
     [mutate]
   )
 
   const upsertIncome = useCallback(
-    (income: Income) =>
-      mutate(
-        (s) => ({ ...s, incomes: [...s.incomes.filter((i) => i.id !== income.id), income] }),
-        (a) => a.upsertIncome(income)
-      ),
+    (income: Income) => mutate((s) => reduce.upsertIncome(s, income), (a) => a.upsertIncome(income)),
     [mutate]
   )
 
   const deleteIncome = useCallback(
-    (id: string) =>
-      mutate(
-        (s) => ({ ...s, incomes: s.incomes.filter((i) => i.id !== id) }),
-        (a) => a.deleteIncome(id)
-      ),
+    (id: string) => mutate((s) => reduce.deleteIncome(s, id), (a) => a.deleteIncome(id)),
     [mutate]
   )
 
   const setPaid = useCallback(
     (item: Item, dueDate: string, paid: boolean) => {
-      if (paid) {
-        const payment: Payment = {
-          id: crypto.randomUUID(),
-          itemId: item.id,
-          dueDate,
-          paidAt: new Date().toISOString(),
-          amount: item.amount,
-        }
+      if (!paid) {
         return mutate(
-          (s) => ({
-            ...s,
-            payments: [
-              ...s.payments.filter((p) => !(p.itemId === item.id && p.dueDate === dueDate)),
-              payment,
-            ],
-          }),
-          (a) => a.addPayment(payment)
+          (s) => reduce.removePayment(s, item.id, dueDate),
+          (a) => a.removePayment(item.id, dueDate)
         )
       }
-      return mutate(
-        (s) => ({
-          ...s,
-          payments: s.payments.filter((p) => !(p.itemId === item.id && p.dueDate === dueDate)),
-        }),
-        (a) => a.removePayment(item.id, dueDate)
-      )
+      const payment: Payment = {
+        id: crypto.randomUUID(),
+        itemId: item.id,
+        dueDate,
+        paidAt: new Date().toISOString(),
+        amount: item.amount,
+      }
+      return mutate((s) => reduce.putPayment(s, payment), (a) => a.addPayment(payment))
     },
     [mutate]
   )
 
   const saveSettings = useCallback(
     (settings: HouseholdSettings) =>
-      mutate(
-        (s) => ({ ...s, settings }),
-        (a) => a.saveSettings(settings)
-      ),
+      mutate((s) => reduce.putSettings(s, settings), (a) => a.saveSettings(settings)),
     [mutate]
   )
 
@@ -391,52 +336,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
     startAdapter(new LocalAdapter())
   }, [startAdapter])
 
-  const value = useMemo<AppData>(
-    () => ({
-      status,
-      mode,
-      snapshot,
-      loading,
-      userEmail,
-      saveError,
-      dismissSaveError,
-      chooseDemo,
-      chooseCloud,
-      signIn,
-      signUp,
-      signOut,
-      backToWelcome,
-      upsertItem,
-      deleteItem,
-      upsertIncome,
-      deleteIncome,
-      setPaid,
-      saveSettings,
-      resetDemo,
-    }),
-    [
-      status,
-      mode,
-      snapshot,
-      loading,
-      userEmail,
-      saveError,
-      dismissSaveError,
-      chooseDemo,
-      chooseCloud,
-      signIn,
-      signUp,
-      signOut,
-      backToWelcome,
-      upsertItem,
-      deleteItem,
-      upsertIncome,
-      deleteIncome,
-      setPaid,
-      saveSettings,
-      resetDemo,
-    ]
-  )
+  const value: AppData = {
+    status,
+    mode,
+    snapshot,
+    userEmail,
+    saveError,
+    dismissSaveError,
+    chooseDemo,
+    chooseCloud,
+    signIn,
+    signUp,
+    signOut,
+    backToWelcome,
+    upsertItem,
+    deleteItem,
+    upsertIncome,
+    deleteIncome,
+    setPaid,
+    saveSettings,
+    resetDemo,
+  }
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

@@ -27,7 +27,7 @@ export const CAT_KEY: Record<string, TKey> = {
 }
 
 export function categoryEmoji(category: string, settings: HouseholdSettings): string {
-  const custom = settings.customCategories?.find((c) => c.id === category)
+  const custom = settings.customCategories.find((c) => c.id === category)
   return custom?.emoji || CATEGORY_EMOJI[category] || '📦'
 }
 
@@ -36,7 +36,7 @@ export function categoryLabel(
   settings: HouseholdSettings,
   t: (key: TKey) => string
 ): string {
-  const custom = settings.customCategories?.find((c) => c.id === category)
+  const custom = settings.customCategories.find((c) => c.id === category)
   if (custom) return custom.label
   const key = CAT_KEY[category]
   return key ? t(key) : category

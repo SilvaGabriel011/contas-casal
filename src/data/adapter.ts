@@ -13,7 +13,11 @@ export interface DataAdapter {
   subscribe?(onRemoteChange: () => void): () => void
 }
 
-export const DEFAULT_SETTINGS: HouseholdSettings = { nameA: 'Gabriel', nameB: 'Izabela' }
+export const DEFAULT_SETTINGS: HouseholdSettings = {
+  nameA: 'Gabriel',
+  nameB: 'Izabela',
+  customCategories: [],
+}
 
 export const EMPTY_SNAPSHOT: Snapshot = {
   items: [],

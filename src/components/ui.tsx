@@ -127,9 +127,6 @@ export function Sheet({
   )
 }
 
-export function Skeleton({ className = '' }: { className?: string }) {
-  return <div className={`skeleton rounded-2xl ${className}`} />
-}
 
 export function EmptyState({ emoji, title, body }: { emoji: string; title: string; body?: string }) {
   return (

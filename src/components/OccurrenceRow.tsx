@@ -1,6 +1,7 @@
 import { useState, type CSSProperties } from 'react'
 import type { Occurrence, Profile } from '../types'
 import { categoryEmoji } from '../lib/categories'
+import { personName } from '../lib/owners'
 import { useAppData } from '../data/DataProvider'
 import { useI18n, formatDay } from '../lib/i18n'
 import { formatMoney, CURRENCY_FLAG } from '../lib/money'
@@ -44,8 +45,7 @@ export function OccurrenceRow({
   }
 
   const { item } = occ
-  const ownerName =
-    item.owner === 'a' ? snapshot.settings.nameA : item.owner === 'b' ? snapshot.settings.nameB : null
+  const ownerName = item.owner === 'shared' ? null : personName(item.owner, snapshot.settings)
 
   let dueLabel: string
   if (occ.dueDate === today) dueLabel = t('dueToday')

@@ -54,7 +54,7 @@ export interface CustomCategory {
 export interface HouseholdSettings {
   nameA: string
   nameB: string
-  customCategories?: CustomCategory[]
+  customCategories: CustomCategory[]
 }
 
 export interface Snapshot {
@@ -95,7 +95,6 @@ export const CATEGORIES = [
   'other',
 ] as const
 
-export type Category = (typeof CATEGORIES)[number]
 
 export const CATEGORY_EMOJI: Record<string, string> = {
   rent: '🏠',

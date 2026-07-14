@@ -4,8 +4,7 @@ export type Lang = 'pt' | 'en'
 
 const STORAGE_KEY = 'cc.lang'
 
-const dict = {
-  pt: {
+const pt = {
     appName: 'Contas do Casal',
     tagline: 'As finanças de vocês dois, na Austrália e no Brasil, num lugar só.',
     activeOne: 'Ativa',
@@ -38,7 +37,6 @@ const dict = {
     dueUntilPayday: 'até lá',
     today: 'Hoje',
     tomorrow: 'Amanhã',
-    inDays: 'em {n} dias',
     // sections
     overdue: 'Atrasadas',
     upcoming: 'Próximas',
@@ -46,7 +44,6 @@ const dict = {
     emptyHomeTitle: 'Começando do zero',
     emptyHomeBody: 'Adicione a primeira conta ou renda de vocês no botão + aí embaixo.',
     // occurrence rows
-    paid: 'Pago',
     pay: 'Pagar',
     unpay: 'Desfazer',
     overdueBy: '{n}d de atraso',
@@ -63,7 +60,6 @@ const dict = {
     kindSubHint: 'Netflix, Spotify, academia…',
     kindInstHint: 'Compra parcelada no cartão',
     kindPurchaseHint: 'Carro, móvel, passagem…',
-    kindIncomeHint: 'Salário, freela…',
     purchaseDate: 'Data da compra',
     // frequencies
     weekly: 'Semanal',
@@ -95,7 +91,6 @@ const dict = {
     notes: 'Notas',
     notesPlaceholder: 'Opcional',
     save: 'Salvar',
-    cancel: 'Cancelar',
     delete: 'Excluir',
     deleteConfirm: 'Excluir de vez? O histórico de pagamentos some junto.',
     invalidAmount: 'Valor inválido',
@@ -195,15 +190,11 @@ const dict = {
     authErrorGeneric: 'Não deu certo: {msg}',
     signUpDone: 'Conta criada! Se o projeto exige confirmação, veja o e-mail antes de entrar.',
     loading: 'Carregando…',
-    syncing: 'Sincronizando…',
-    offline: 'Sem internet — mostrando a última versão',
-    // misc
-    close: 'Fechar',
-    edit: 'Editar',
-    confirm: 'Confirmar',
-    of: 'de',
-  },
-  en: {
+} as const
+
+export type TKey = keyof typeof pt
+
+const en = {
     appName: 'Couple Bills',
     tagline: 'Both your finances, Australia and Brazil, in one place.',
     activeOne: 'Active',
@@ -231,13 +222,11 @@ const dict = {
     dueUntilPayday: 'due by then',
     today: 'Today',
     tomorrow: 'Tomorrow',
-    inDays: 'in {n} days',
     overdue: 'Overdue',
     upcoming: 'Upcoming',
     noUpcoming: 'Nothing due in the next 30 days 🌴',
     emptyHomeTitle: 'A fresh start',
     emptyHomeBody: 'Add your first bill or income with the + button below.',
-    paid: 'Paid',
     pay: 'Pay',
     unpay: 'Undo',
     overdueBy: '{n}d overdue',
@@ -253,7 +242,6 @@ const dict = {
     kindSubHint: 'Netflix, Spotify, gym…',
     kindInstHint: 'Card purchase in instalments',
     kindPurchaseHint: 'Car, furniture, flights…',
-    kindIncomeHint: 'Salary, freelance…',
     purchaseDate: 'Purchase date',
     weekly: 'Weekly',
     fortnightly: 'Fortnightly',
@@ -283,7 +271,6 @@ const dict = {
     notes: 'Notes',
     notesPlaceholder: 'Optional',
     save: 'Save',
-    cancel: 'Cancel',
     delete: 'Delete',
     deleteConfirm: 'Delete for good? Payment history goes with it.',
     invalidAmount: 'Invalid amount',
@@ -378,20 +365,14 @@ const dict = {
     authErrorGeneric: 'That didn’t work: {msg}',
     signUpDone: 'Account created! If your project requires it, confirm the email before signing in.',
     loading: 'Loading…',
-    syncing: 'Syncing…',
-    offline: 'Offline — showing the last known data',
-    close: 'Close',
-    edit: 'Edit',
-    confirm: 'Confirm',
-    of: 'of',
-  },
-} as const
+} as const satisfies Record<TKey, string>
 
-export type TKey = keyof (typeof dict)['pt']
+const dict = { pt, en }
 
 interface I18n {
   lang: Lang
   locale: string
+  decimalSep: '.' | ','
   t: (key: TKey, vars?: Record<string, string | number>) => string
   setLang: (lang: Lang) => void
 }
@@ -419,11 +400,11 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const value = useMemo<I18n>(() => {
     const locale = lang === 'pt' ? 'pt-BR' : 'en-AU'
     const t = (key: TKey, vars?: Record<string, string | number>) => {
-      let s: string = dict[lang][key] ?? dict.pt[key] ?? key
+      let s: string = dict[lang][key]
       if (vars) for (const [k, v] of Object.entries(vars)) s = s.replaceAll(`{${k}}`, String(v))
       return s
     }
-    return { lang, locale, t, setLang }
+    return { lang, locale, decimalSep: lang === 'pt' ? ',' : '.', t, setLang } as const
   }, [lang, setLang])
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>
@@ -442,9 +423,3 @@ export function formatDay(iso: string, locale: string): string {
   )
 }
 
-export function formatFullDate(iso: string, locale: string): string {
-  const [y, m, d] = iso.split('-').map(Number)
-  return new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'long', year: 'numeric' }).format(
-    new Date(y, m - 1, d)
-  )
-}

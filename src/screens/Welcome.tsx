@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAppData } from '../data/DataProvider'
 import { useI18n } from '../lib/i18n'
-import { getCloudConfig, hasBakedCloudConfig } from '../lib/config'
+import { getCloudConfig, hasBakedCloudConfig, SUPABASE_URL_RE } from '../lib/config'
 import { Field, inputCls } from '../components/ui'
 
 type Step = 'menu' | 'supabase' | 'auth'
@@ -24,8 +24,9 @@ export function Welcome() {
 
   const startCloud = () => {
     setMessage(null)
-    if (getCloudConfig()) {
-      chooseCloud(getCloudConfig()!)
+    const cfg = getCloudConfig()
+    if (cfg) {
+      chooseCloud(cfg)
       setStep('auth')
     } else {
       setStep('supabase')
@@ -35,7 +36,7 @@ export function Welcome() {
   const saveSupabase = () => {
     const u = url.trim().replace(/\/+$/, '')
     const k = anonKey.trim()
-    if (!/^https:\/\/.+\.supabase\.co$/.test(u) || k.length < 20) {
+    if (!SUPABASE_URL_RE.test(u) || k.length < 20) {
       setMessage({ kind: 'error', text: t('invalidSupabaseConfig') })
       return
     }

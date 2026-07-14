@@ -37,9 +37,6 @@ export function daysBetween(fromISO: string, toISOStr: string): number {
   return Math.round(ms / 86_400_000)
 }
 
-export function monthKey(iso: string): string {
-  return iso.slice(0, 7)
-}
 
 export function startOfMonth(iso: string): string {
   return `${iso.slice(0, 7)}-01`

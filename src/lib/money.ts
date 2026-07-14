@@ -56,4 +56,9 @@ export function parseAmount(raw: string, decimalSep: '.' | ',' = ','): number | 
   return Number.isFinite(n) && n >= 0 ? n : null
 }
 
+// Prefill for amount <input>s: stored numbers use '.', the field shows the locale separator.
+export function formatAmountInput(n: number, decimalSep: '.' | ','): string {
+  return String(n).replace('.', decimalSep)
+}
+
 export const CURRENCY_FLAG: Record<Currency, string> = { AUD: '🇦🇺', BRL: '🇧🇷' }

@@ -128,13 +128,23 @@ export function incomeDates(income: Income, from: string, to: string): string[] 
 }
 
 // Weekly hours and per-cycle pay for an hourly income.
+// One home for the payroll formula: weekly hours -> pay per cycle.
+export function hourlyPerCycle(
+  rate: number,
+  hoursPerDay: number,
+  daysPerWeek: number,
+  frequency: IncomeFrequency
+): number {
+  const weekly = rate * hoursPerDay * daysPerWeek
+  return frequency === 'weekly' ? weekly : frequency === 'fortnightly' ? weekly * 2 : (weekly * 52) / 12
+}
+
 export function hourlyInfo(income: Income): { hoursPerWeek: number; perCycle: number } | null {
   if (!income.hourlyRate || !income.hoursPerDay || !income.daysPerWeek) return null
-  const hoursPerWeek = income.hoursPerDay * income.daysPerWeek
-  const weekly = income.hourlyRate * hoursPerWeek
-  const perCycle =
-    income.frequency === 'weekly' ? weekly : income.frequency === 'fortnightly' ? weekly * 2 : (weekly * 52) / 12
-  return { hoursPerWeek, perCycle }
+  return {
+    hoursPerWeek: income.hoursPerDay * income.daysPerWeek,
+    perCycle: hourlyPerCycle(income.hourlyRate, income.hoursPerDay, income.daysPerWeek, income.frequency),
+  }
 }
 
 export function nextPayday(incomes: Income[], onOrAfter: string): { date: string; income: Income } | null {

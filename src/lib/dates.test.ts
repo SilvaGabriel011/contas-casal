@@ -4,7 +4,6 @@ import {
   addMonthsClamped,
   daysBetween,
   endOfMonth,
-  monthKey,
   parseDate,
   startOfMonth,
   toISO,
@@ -78,11 +77,10 @@ describe('daysBetween', () => {
 })
 
 describe('month helpers', () => {
-  it('startOfMonth / endOfMonth / monthKey', () => {
+  it('startOfMonth / endOfMonth', () => {
     expect(startOfMonth('2026-07-14')).toBe('2026-07-01')
     expect(endOfMonth('2026-07-14')).toBe('2026-07-31')
     expect(endOfMonth('2026-02-10')).toBe('2026-02-28')
     expect(endOfMonth('2024-02-10')).toBe('2024-02-29')
-    expect(monthKey('2026-07-14')).toBe('2026-07')
   })
 })

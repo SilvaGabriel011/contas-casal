@@ -1,0 +1,47 @@
+import type { HouseholdSettings, Income, Item, Payment, Snapshot } from '../types'
+
+// Pure snapshot transformations shared by the demo adapter and the
+// cloud-mode optimistic updates, so both modes apply identical rules.
+
+export function upsertItem(s: Snapshot, item: Item): Snapshot {
+  return { ...s, items: [...s.items.filter((i) => i.id !== item.id), item] }
+}
+
+// Deleting an item cascades to its payment history (mirrors the DB FK).
+export function deleteItem(s: Snapshot, id: string): Snapshot {
+  return {
+    ...s,
+    items: s.items.filter((i) => i.id !== id),
+    payments: s.payments.filter((p) => p.itemId !== id),
+  }
+}
+
+export function upsertIncome(s: Snapshot, income: Income): Snapshot {
+  return { ...s, incomes: [...s.incomes.filter((i) => i.id !== income.id), income] }
+}
+
+export function deleteIncome(s: Snapshot, id: string): Snapshot {
+  return { ...s, incomes: s.incomes.filter((i) => i.id !== id) }
+}
+
+// One payment per (item, dueDate): putting replaces any existing one.
+export function putPayment(s: Snapshot, payment: Payment): Snapshot {
+  return {
+    ...s,
+    payments: [
+      ...s.payments.filter((p) => !(p.itemId === payment.itemId && p.dueDate === payment.dueDate)),
+      payment,
+    ],
+  }
+}
+
+export function removePayment(s: Snapshot, itemId: string, dueDate: string): Snapshot {
+  return {
+    ...s,
+    payments: s.payments.filter((p) => !(p.itemId === itemId && p.dueDate === dueDate)),
+  }
+}
+
+export function putSettings(s: Snapshot, settings: HouseholdSettings): Snapshot {
+  return { ...s, settings }
+}
