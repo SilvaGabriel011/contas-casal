@@ -1,7 +1,7 @@
 export type Owner = 'a' | 'b' | 'shared'
 export type Profile = Owner
 export type Currency = 'AUD' | 'BRL'
-export type ItemKind = 'bill' | 'subscription' | 'installment'
+export type ItemKind = 'bill' | 'subscription' | 'installment' | 'purchase'
 export type Frequency = 'weekly' | 'fortnightly' | 'monthly' | 'yearly' | 'once'
 export type IncomeFrequency = 'weekly' | 'fortnightly' | 'monthly'
 
@@ -25,11 +25,15 @@ export interface Income {
   id: string
   name: string
   owner: Owner
+  // Amount paid per cycle. For hourly jobs it is derived from the fields below.
   amount: number
   currency: Currency
   frequency: IncomeFrequency
   nextDate: string
   active: boolean
+  hourlyRate: number | null
+  hoursPerDay: number | null
+  daysPerWeek: number | null
   createdAt: string
 }
 
@@ -41,9 +45,16 @@ export interface Payment {
   amount: number
 }
 
+export interface CustomCategory {
+  id: string
+  emoji: string
+  label: string
+}
+
 export interface HouseholdSettings {
   nameA: string
   nameB: string
+  customCategories?: CustomCategory[]
 }
 
 export interface Snapshot {
@@ -66,6 +77,9 @@ export const CATEGORIES = [
   'internet',
   'phone',
   'groceries',
+  'food',
+  'household',
+  'shopping',
   'transport',
   'car',
   'health',
@@ -74,6 +88,7 @@ export const CATEGORIES = [
   'card',
   'streaming',
   'gym',
+  'pet',
   'tax',
   'travel',
   'gift',
@@ -88,6 +103,9 @@ export const CATEGORY_EMOJI: Record<string, string> = {
   internet: '📶',
   phone: '📱',
   groceries: '🛒',
+  food: '🍔',
+  household: '🧺',
+  shopping: '🛍️',
   transport: '🚌',
   car: '🚗',
   health: '🩺',
@@ -96,6 +114,7 @@ export const CATEGORY_EMOJI: Record<string, string> = {
   card: '💳',
   streaming: '🎬',
   gym: '🏋️',
+  pet: '🐾',
   tax: '🧾',
   travel: '✈️',
   gift: '🎁',

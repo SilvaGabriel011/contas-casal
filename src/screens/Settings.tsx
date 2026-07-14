@@ -24,7 +24,7 @@ export function Settings() {
     const a = nameA.trim() || snapshot.settings.nameA
     const b = nameB.trim() || snapshot.settings.nameB
     if (a !== snapshot.settings.nameA || b !== snapshot.settings.nameB) {
-      saveSettings({ nameA: a, nameB: b })
+      saveSettings({ ...snapshot.settings, nameA: a, nameB: b })
     }
     setDirty(false)
   }

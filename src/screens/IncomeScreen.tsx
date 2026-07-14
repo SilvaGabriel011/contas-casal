@@ -3,10 +3,18 @@ import type { Currency, Income, Profile } from '../types'
 import { useAppData } from '../data/DataProvider'
 import { useI18n, formatDay, type TKey } from '../lib/i18n'
 import { formatMoney, formatMoneyShort, CURRENCY_FLAG } from '../lib/money'
-import { todayISO } from '../lib/dates'
-import { monthlyEquivalent, nextIncomeDate, visibleToProfile } from '../lib/schedule'
+import { addDays, endOfMonth, startOfMonth, todayISO } from '../lib/dates'
+import { hourlyInfo, incomeDates, monthlyEquivalent, nextIncomeDate, visibleToProfile } from '../lib/schedule'
 import { ProfileSwitcher } from '../components/ProfileSwitcher'
 import { EmptyState } from '../components/ui'
+
+interface CurrencyStats {
+  currency: Currency
+  monthTotal: number
+  received: number
+  coming: number
+  avgHourly: number | null
+}
 
 export function IncomeScreen({
   profile,
@@ -28,15 +36,57 @@ export function IncomeScreen({
         .sort((a, b) => a.name.localeCompare(b.name)),
     [snapshot.incomes, profile]
   )
+  const activeIncomes = useMemo(() => incomes.filter((i) => i.active), [incomes])
 
-  const totals = useMemo(() => {
-    const map = new Map<Currency, number>()
-    for (const i of incomes) {
-      if (!i.active) continue
-      map.set(i.currency, (map.get(i.currency) ?? 0) + monthlyEquivalent(i.amount, i.frequency))
+  const stats = useMemo<CurrencyStats[]>(() => {
+    const monthStart = startOfMonth(today)
+    const monthEnd = endOfMonth(today)
+    return (['AUD', 'BRL'] as Currency[])
+      .map((currency) => {
+        const list = activeIncomes.filter((i) => i.currency === currency)
+        if (!list.length) return null
+        let monthTotal = 0
+        let received = 0
+        let coming = 0
+        let hourlyPaySum = 0
+        let hourlyHoursSum = 0
+        for (const income of list) {
+          monthTotal += monthlyEquivalent(income.amount, income.frequency)
+          received += incomeDates(income, monthStart, today).length * income.amount
+          coming += incomeDates(income, addDays(today, 1), monthEnd).length * income.amount
+          const hourly = hourlyInfo(income)
+          if (hourly && income.hourlyRate) {
+            hourlyPaySum += income.hourlyRate * hourly.hoursPerWeek
+            hourlyHoursSum += hourly.hoursPerWeek
+          }
+        }
+        return {
+          currency,
+          monthTotal,
+          received,
+          coming,
+          avgHourly: hourlyHoursSum > 0 ? hourlyPaySum / hourlyHoursSum : null,
+        }
+      })
+      .filter((s): s is CurrencyStats => s !== null)
+  }, [activeIncomes, today])
+
+  const upcomingPays = useMemo(() => {
+    const out: { date: string; income: Income }[] = []
+    for (const income of activeIncomes) {
+      for (const date of incomeDates(income, today, addDays(today, 30))) {
+        out.push({ date, income })
+      }
     }
-    return [...map.entries()]
-  }, [incomes])
+    return out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)).slice(0, 8)
+  }, [activeIncomes, today])
+
+  const ownerName = (income: Income) =>
+    income.owner === 'a'
+      ? snapshot.settings.nameA
+      : income.owner === 'b'
+        ? snapshot.settings.nameB
+        : t('couple')
 
   const freqLabel: Record<string, TKey> = {
     weekly: 'everyWeek',
@@ -52,17 +102,57 @@ export function IncomeScreen({
 
       <ProfileSwitcher profile={profile} onChange={onProfile} />
 
-      {totals.length > 0 && (
-        <div className="anim-rise rounded-3xl border border-line bg-card p-5">
-          <p className="text-[13px] font-semibold text-ink2">{t('incomeTotalMonth')}</p>
-          <div className="mt-1 space-y-0.5">
-            {totals.map(([c, v]) => (
-              <p key={c} className="num text-[26px] leading-tight font-extrabold text-ink">
-                {CURRENCY_FLAG[c]} {formatMoneyShort(v, c, locale)}
+      {stats.map((s) => (
+        <div key={s.currency} className="anim-rise rounded-3xl border border-line bg-card p-5">
+          <div className="flex items-baseline justify-between">
+            <p className="text-[13px] font-semibold text-ink2">{t('incomeTotalMonth')}</p>
+            {s.avgHourly !== null && (
+              <span className="num rounded-full bg-card2 px-2.5 py-1 text-[12px] font-bold text-ink">
+                ⏱️ {formatMoney(s.avgHourly, s.currency, locale)} {t('avgPerHour')}
+              </span>
+            )}
+          </div>
+          <p className="num mt-1 text-[28px] leading-tight font-extrabold text-ink">
+            {CURRENCY_FLAG[s.currency]} {formatMoneyShort(s.monthTotal, s.currency, locale)}
+          </p>
+          <div className="mt-3 flex gap-2">
+            <div className="flex-1 rounded-2xl bg-good/10 px-3 py-2.5">
+              <p className="text-[11px] font-bold tracking-wide text-good uppercase">✓ {t('receivedSoFar')}</p>
+              <p className="num mt-0.5 text-[15px] font-extrabold text-ink">
+                {formatMoneyShort(s.received, s.currency, locale)}
               </p>
-            ))}
+            </div>
+            <div className="flex-1 rounded-2xl bg-card2 px-3 py-2.5">
+              <p className="text-[11px] font-bold tracking-wide text-ink2 uppercase">⏳ {t('stillComing')}</p>
+              <p className="num mt-0.5 text-[15px] font-extrabold text-ink">
+                {formatMoneyShort(s.coming, s.currency, locale)}
+              </p>
+            </div>
           </div>
         </div>
+      ))}
+
+      {upcomingPays.length > 0 && (
+        <section>
+          <h2 className="mb-2 px-1 text-[13px] font-extrabold tracking-wide text-ink2 uppercase">
+            📆 {t('nextPays')}
+          </h2>
+          <div className="divide-y divide-line rounded-2xl border border-line bg-card">
+            {upcomingPays.map(({ date, income }) => (
+              <div key={`${income.id}|${date}`} className="flex items-center gap-3 px-4 py-2.5">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[14px] font-semibold text-ink">
+                    {income.name} <span className="font-normal text-ink2">· {ownerName(income)}</span>
+                  </span>
+                  <span className="block text-[12px] text-ink2">{formatDay(date, locale)}</span>
+                </span>
+                <span className="num shrink-0 text-[14px] font-bold text-good">
+                  +{formatMoneyShort(income.amount, income.currency, locale)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
       {incomes.length === 0 ? (
@@ -70,8 +160,8 @@ export function IncomeScreen({
       ) : (
         <div className="divide-y divide-line rounded-2xl border border-line bg-card">
           {incomes.map((income) => {
-            const ownerName = income.owner === 'a' ? snapshot.settings.nameA : income.owner === 'b' ? snapshot.settings.nameB : t('couple')
             const next = nextIncomeDate(income, today)
+            const hourly = hourlyInfo(income)
             return (
               <button
                 key={income.id}
@@ -79,7 +169,7 @@ export function IncomeScreen({
                 className={`flex w-full items-center gap-3 px-4 py-3.5 text-left ${income.active ? '' : 'opacity-55'}`}
               >
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card2 text-xl">
-                  💰
+                  {hourly ? '⏱️' : '💰'}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
@@ -92,9 +182,17 @@ export function IncomeScreen({
                     )}
                   </span>
                   <span className="mt-0.5 block text-[12px] text-ink2">
-                    {t(freqLabel[income.frequency])} · {ownerName} · {t('nextOn')}{' '}
+                    {t(freqLabel[income.frequency])} · {ownerName(income)} · {t('nextOn')}{' '}
                     {formatDay(next, locale)}
                   </span>
+                  {hourly && income.hourlyRate && (
+                    <span className="num mt-0.5 block text-[12px] font-semibold text-ink2">
+                      {t('hourlySummary', {
+                        h: hourly.hoursPerWeek,
+                        r: `${formatMoney(income.hourlyRate, income.currency, locale)}/h`,
+                      })}
+                    </span>
+                  )}
                 </span>
                 <span className="num shrink-0 text-[15px] font-bold text-good">
                   +{formatMoney(income.amount, income.currency, locale)}

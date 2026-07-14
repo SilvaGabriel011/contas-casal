@@ -98,6 +98,45 @@ export function nextIncomeDate(income: Income, onOrAfter: string): string {
   return addDays(d, k * step)
 }
 
+// Paydays of an income within [from, to]. Unlike items, the cadence is
+// extrapolated backwards from the anchor too, so "received so far this month"
+// can be estimated.
+export function incomeDates(income: Income, from: string, to: string): string[] {
+  const out: string[] = []
+  const anchor = income.nextDate
+  if (income.frequency === 'monthly') {
+    const [ay, am] = anchor.split('-').map(Number)
+    const [fy, fm] = from.split('-').map(Number)
+    let k = (fy - ay) * 12 + (fm - am) - 1
+    while (addMonthsClamped(anchor, k) < from) k++
+    for (; ; k++) {
+      const date = addMonthsClamped(anchor, k)
+      if (date > to) break
+      out.push(date)
+    }
+    return out
+  }
+  const step = income.frequency === 'weekly' ? 7 : 14
+  let k = Math.floor(daysBetween(anchor, from) / step)
+  while (addDays(anchor, k * step) < from) k++
+  for (; ; k++) {
+    const date = addDays(anchor, k * step)
+    if (date > to) break
+    out.push(date)
+  }
+  return out
+}
+
+// Weekly hours and per-cycle pay for an hourly income.
+export function hourlyInfo(income: Income): { hoursPerWeek: number; perCycle: number } | null {
+  if (!income.hourlyRate || !income.hoursPerDay || !income.daysPerWeek) return null
+  const hoursPerWeek = income.hoursPerDay * income.daysPerWeek
+  const weekly = income.hourlyRate * hoursPerWeek
+  const perCycle =
+    income.frequency === 'weekly' ? weekly : income.frequency === 'fortnightly' ? weekly * 2 : (weekly * 52) / 12
+  return { hoursPerWeek, perCycle }
+}
+
 export function nextPayday(incomes: Income[], onOrAfter: string): { date: string; income: Income } | null {
   let best: { date: string; income: Income } | null = null
   for (const income of incomes) {

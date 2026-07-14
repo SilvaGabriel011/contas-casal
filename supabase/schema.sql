@@ -4,7 +4,7 @@
 create table if not exists public.items (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users (id) on delete cascade,
-  kind text not null check (kind in ('bill', 'subscription', 'installment')),
+  kind text not null check (kind in ('bill', 'subscription', 'installment', 'purchase')),
   name text not null,
   category text not null default 'other',
   amount numeric(12, 2) not null check (amount >= 0),
@@ -28,6 +28,9 @@ create table if not exists public.incomes (
   frequency text not null check (frequency in ('weekly', 'fortnightly', 'monthly')),
   next_date date not null,
   active boolean not null default true,
+  hourly_rate numeric(12, 2),
+  hours_per_day numeric(6, 2),
+  days_per_week numeric(4, 2),
   created_at timestamptz not null default now()
 );
 
@@ -46,6 +49,14 @@ create table if not exists public.app_settings (
   data jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
+
+-- Migrações: seguras de rodar de novo em projetos que já usaram uma versão anterior deste arquivo.
+alter table public.items drop constraint if exists items_kind_check;
+alter table public.items add constraint items_kind_check
+  check (kind in ('bill', 'subscription', 'installment', 'purchase'));
+alter table public.incomes add column if not exists hourly_rate numeric(12, 2);
+alter table public.incomes add column if not exists hours_per_day numeric(6, 2);
+alter table public.incomes add column if not exists days_per_week numeric(4, 2);
 
 -- Row Level Security: cada conta (o login compartilhado do casal) só vê os próprios dados.
 alter table public.items enable row level security;

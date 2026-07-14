@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Currency, Item, Profile } from '../types'
-import { CATEGORY_EMOJI } from '../types'
+import { categoryEmoji } from '../lib/categories'
 import { useAppData } from '../data/DataProvider'
 import { useI18n, type TKey } from '../lib/i18n'
 import { formatMoney, formatMoneyShort, CURRENCY_FLAG } from '../lib/money'
@@ -108,7 +108,7 @@ export function Items({
                 className={`flex w-full items-center gap-3 px-4 py-3 text-left ${finished ? 'opacity-55' : ''}`}
               >
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card2 text-xl">
-                  {CATEGORY_EMOJI[item.category] ?? '📦'}
+                  {categoryEmoji(item.category, snapshot.settings)}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">

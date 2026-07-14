@@ -42,6 +42,9 @@ type IncomeRow = {
   frequency: string
   next_date: string
   active: boolean
+  hourly_rate: number | null
+  hours_per_day: number | null
+  days_per_week: number | null
   created_at: string
 }
 
@@ -79,6 +82,9 @@ const incomeFromRow = (r: IncomeRow): Income => ({
   frequency: r.frequency as Income['frequency'],
   nextDate: r.next_date,
   active: r.active,
+  hourlyRate: r.hourly_rate === null ? null : Number(r.hourly_rate),
+  hoursPerDay: r.hours_per_day === null ? null : Number(r.hours_per_day),
+  daysPerWeek: r.days_per_week === null ? null : Number(r.days_per_week),
   createdAt: r.created_at,
 })
 
@@ -148,6 +154,9 @@ export class SupabaseAdapter implements DataAdapter {
       frequency: income.frequency,
       next_date: income.nextDate,
       active: income.active,
+      hourly_rate: income.hourlyRate,
+      hours_per_day: income.hoursPerDay,
+      days_per_week: income.daysPerWeek,
     })
     if (error) throw error
   }
