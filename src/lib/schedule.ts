@@ -70,12 +70,12 @@ export function installmentProgress(item: Item, payments: Payment[]): { paid: nu
   return { paid: Math.min(paid, total), total }
 }
 
-export function isItemFinished(item: Item, payments: Payment[], today: string): boolean {
+export function isItemFinished(item: Item, payments: Payment[]): boolean {
   if (item.kind === 'installment' && item.installmentsTotal) {
     return installmentProgress(item, payments).paid >= item.installmentsTotal
   }
   if (item.frequency === 'once') {
-    return payments.some((p) => p.itemId === item.id) || item.startDate < today
+    return payments.some((p) => p.itemId === item.id)
   }
   return false
 }

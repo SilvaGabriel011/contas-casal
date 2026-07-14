@@ -33,7 +33,7 @@ export function Items({
       .filter((i) => visibleToProfile(i.owner, profile))
       .filter((i) => currency === 'all' || i.currency === currency)
       .filter((i) => {
-        const finished = i.archived || isItemFinished(i, snapshot.payments, today)
+        const finished = i.archived || isItemFinished(i, snapshot.payments)
         return status === 'all' || (status === 'finished') === finished
       })
       .filter((i) => !q || i.name.toLowerCase().includes(q))
@@ -90,7 +90,7 @@ export function Items({
       ) : (
         <div className="divide-y divide-line rounded-2xl border border-line bg-card">
           {items.map((item) => {
-            const finished = item.archived || isItemFinished(item, snapshot.payments, today)
+            const finished = item.archived || isItemFinished(item, snapshot.payments)
             const progress =
               item.kind === 'installment' && item.installmentsTotal
                 ? installmentProgress(item, snapshot.payments)
