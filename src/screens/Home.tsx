@@ -90,7 +90,7 @@ export function Home({
     <div className="space-y-5">
       <header className="pt-2">
         <p className="text-sm font-medium text-ink2">
-          {greeting} {mode === 'demo' && <span className="ml-1 rounded-full bg-card2 px-2 py-0.5 text-[11px] font-bold">demo</span>}
+          {greeting} {mode === 'demo' && <span className="ml-1 rounded-full bg-card2 px-2 py-0.5 text-[11px] font-bold">local</span>}
         </p>
         <h1 className="text-2xl font-extrabold tracking-tight text-ink">{profileName}</h1>
       </header>

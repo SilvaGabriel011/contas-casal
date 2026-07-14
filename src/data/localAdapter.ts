@@ -1,9 +1,9 @@
 import type { HouseholdSettings, Income, Item, Payment, Snapshot } from '../types'
-import { addDays, addMonthsClamped, todayISO } from '../lib/dates'
-import { DEFAULT_SETTINGS, type DataAdapter } from './adapter'
+import { DEFAULT_SETTINGS, EMPTY_SNAPSHOT, type DataAdapter } from './adapter'
 import * as reduce from './reducers'
 
-const KEY = 'cc.demo.v1'
+// v2: local mode starts from a clean slate (v1 shipped with sample data).
+const KEY = 'cc.demo.v2'
 
 function read(): Snapshot {
   try {
@@ -18,11 +18,9 @@ function read(): Snapshot {
       }
     }
   } catch {
-    /* fall through to seed */
+    /* corrupted storage falls through to a fresh start */
   }
-  const seeded = seedData()
-  localStorage.setItem(KEY, JSON.stringify(seeded))
-  return seeded
+  return EMPTY_SNAPSHOT
 }
 
 function write(s: Snapshot) {
@@ -81,145 +79,3 @@ export class LocalAdapter implements DataAdapter {
   }
 }
 
-function seedData(): Snapshot {
-  const today = todayISO()
-  const iso = (offsetDays: number) => addDays(today, offsetDays)
-  const now = new Date().toISOString()
-
-  const items: Item[] = [
-    {
-      id: crypto.randomUUID(),
-      kind: 'bill',
-      name: 'Rent',
-      category: 'rent',
-      amount: 620,
-      currency: 'AUD',
-      owner: 'shared',
-      frequency: 'weekly',
-      startDate: iso(2),
-      installmentsTotal: null,
-      notes: null,
-      archived: false,
-      createdAt: now,
-    },
-    {
-      id: crypto.randomUUID(),
-      kind: 'bill',
-      name: 'Energia (AGL)',
-      category: 'utilities',
-      amount: 95,
-      currency: 'AUD',
-      owner: 'shared',
-      frequency: 'monthly',
-      startDate: iso(9),
-      installmentsTotal: null,
-      notes: null,
-      archived: false,
-      createdAt: now,
-    },
-    {
-      id: crypto.randomUUID(),
-      kind: 'subscription',
-      name: 'Netflix',
-      category: 'streaming',
-      amount: 55.9,
-      currency: 'BRL',
-      owner: 'a',
-      frequency: 'monthly',
-      startDate: iso(-3),
-      installmentsTotal: null,
-      notes: null,
-      archived: false,
-      createdAt: now,
-    },
-    {
-      id: crypto.randomUUID(),
-      kind: 'installment',
-      name: 'iPhone (Nubank)',
-      category: 'card',
-      amount: 289.9,
-      currency: 'BRL',
-      owner: 'b',
-      frequency: 'monthly',
-      startDate: addMonthsClamped(iso(5), -2),
-      installmentsTotal: 12,
-      notes: null,
-      archived: false,
-      createdAt: now,
-    },
-    {
-      id: crypto.randomUUID(),
-      kind: 'subscription',
-      name: 'Gym (Anytime)',
-      category: 'gym',
-      amount: 34.5,
-      currency: 'AUD',
-      owner: 'a',
-      frequency: 'fortnightly',
-      startDate: iso(6),
-      installmentsTotal: null,
-      notes: null,
-      archived: false,
-      createdAt: now,
-    },
-    {
-      id: crypto.randomUUID(),
-      kind: 'purchase',
-      name: 'Sofá (Kmart)',
-      category: 'household',
-      amount: 450,
-      currency: 'AUD',
-      owner: 'shared',
-      frequency: 'once',
-      startDate: iso(12),
-      installmentsTotal: null,
-      notes: null,
-      archived: false,
-      createdAt: now,
-    },
-  ]
-
-  const incomes: Income[] = [
-    {
-      id: crypto.randomUUID(),
-      name: 'Salary',
-      owner: 'a',
-      amount: 1850,
-      currency: 'AUD',
-      frequency: 'fortnightly',
-      nextDate: iso(4),
-      active: true,
-      hourlyRate: null,
-      hoursPerDay: null,
-      daysPerWeek: null,
-      createdAt: now,
-    },
-    {
-      id: crypto.randomUUID(),
-      name: 'Café (casual)',
-      owner: 'b',
-      amount: 975,
-      currency: 'AUD',
-      frequency: 'weekly',
-      nextDate: iso(1),
-      active: true,
-      hourlyRate: 32.5,
-      hoursPerDay: 6,
-      daysPerWeek: 5,
-      createdAt: now,
-    },
-  ]
-
-  const rentPastDue = addDays(items[0].startDate, -7)
-  const payments: Payment[] = [
-    {
-      id: crypto.randomUUID(),
-      itemId: items[0].id,
-      dueDate: rentPastDue,
-      paidAt: now,
-      amount: 620,
-    },
-  ]
-
-  return { items, incomes, payments, settings: DEFAULT_SETTINGS }
-}
