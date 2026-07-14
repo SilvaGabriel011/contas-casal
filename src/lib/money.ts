@@ -1,5 +1,7 @@
 import type { Currency } from '../types'
 
+// NBSP keeps the symbol glued to the number so it never wraps mid-value.
+const NBSP = '\u00a0'
 const SYMBOL: Record<Currency, string> = { AUD: 'A$', BRL: 'R$' }
 
 export function formatMoney(amount: number, currency: Currency, locale: string): string {
@@ -7,7 +9,7 @@ export function formatMoney(amount: number, currency: Currency, locale: string):
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount)
-  return `${SYMBOL[currency]} ${value}`
+  return `${SYMBOL[currency]}${NBSP}${value}`
 }
 
 export function formatMoneyShort(amount: number, currency: Currency, locale: string): string {
@@ -16,7 +18,7 @@ export function formatMoneyShort(amount: number, currency: Currency, locale: str
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   }).format(amount)
-  return `${SYMBOL[currency]} ${value}`
+  return `${SYMBOL[currency]}${NBSP}${value}`
 }
 
 // Accepts "1.234,56", "1234,56", "1.234" (pt) and "1,234.56", "1234.56", "1,234" (en).
