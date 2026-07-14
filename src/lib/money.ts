@@ -19,19 +19,38 @@ export function formatMoneyShort(amount: number, currency: Currency, locale: str
   return `${SYMBOL[currency]} ${value}`
 }
 
-// Accepts both "1.234,56" (pt-BR) and "1,234.56" (en) styles.
-export function parseAmount(raw: string): number | null {
+// Accepts "1.234,56", "1234,56", "1.234" (pt) and "1,234.56", "1234.56", "1,234" (en).
+// A lone separator followed by exactly 3 digits is ambiguous ("1.234"): the
+// locale's decimal separator decides — pt reads it as thousands, en as decimal.
+export function parseAmount(raw: string, decimalSep: '.' | ',' = ','): number | null {
   const s = raw.trim().replace(/\s/g, '')
   if (!s) return null
-  const lastComma = s.lastIndexOf(',')
   const lastDot = s.lastIndexOf('.')
-  let normalized: string
-  if (lastComma > lastDot) {
-    normalized = s.replace(/\./g, '').replace(',', '.')
-  } else {
-    normalized = s.replace(/,/g, '')
+  const lastComma = s.lastIndexOf(',')
+  const lastSep = Math.max(lastDot, lastComma)
+  let intPart = s
+  let decPart = ''
+  if (lastSep !== -1) {
+    const sepChar = s[lastSep]
+    const tail = s.slice(lastSep + 1)
+    const bothKinds = lastDot !== -1 && lastComma !== -1
+    const repeated = s.indexOf(sepChar) !== lastSep
+    const isDecimal = bothKinds
+      ? true
+      : repeated
+        ? false
+        : tail.length === 3
+          ? sepChar === decimalSep
+          : tail.length <= 2
+    if (isDecimal) {
+      intPart = s.slice(0, lastSep)
+      decPart = tail
+    }
   }
-  const n = Number(normalized)
+  if (decPart && !/^\d+$/.test(decPart)) return null
+  const intDigits = intPart.replace(/[.,]/g, '')
+  if (intDigits && !/^\d+$/.test(intDigits)) return null
+  const n = Number(`${intDigits || '0'}${decPart ? `.${decPart}` : ''}`)
   return Number.isFinite(n) && n >= 0 ? n : null
 }
 

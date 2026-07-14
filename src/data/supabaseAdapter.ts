@@ -191,7 +191,11 @@ export class SupabaseAdapter implements DataAdapter {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'incomes' }, onRemoteChange)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, onRemoteChange)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, onRemoteChange)
-      .subscribe()
+      // Events emitted while the socket was down are gone forever, so every
+      // (re)join must trigger a catch-up refetch.
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') onRemoteChange()
+      })
     return () => {
       this.sb.removeChannel(channel)
     }

@@ -11,11 +11,14 @@ export function Settings() {
 
   const [nameA, setNameA] = useState(snapshot.settings.nameA)
   const [nameB, setNameB] = useState(snapshot.settings.nameB)
+  const [dirty, setDirty] = useState(false)
 
+  // Sync remote name changes in, but never while the user is mid-edit.
   useEffect(() => {
+    if (dirty) return
     setNameA(snapshot.settings.nameA)
     setNameB(snapshot.settings.nameB)
-  }, [snapshot.settings])
+  }, [snapshot.settings.nameA, snapshot.settings.nameB, dirty])
 
   const persistNames = () => {
     const a = nameA.trim() || snapshot.settings.nameA
@@ -23,6 +26,7 @@ export function Settings() {
     if (a !== snapshot.settings.nameA || b !== snapshot.settings.nameB) {
       saveSettings({ nameA: a, nameB: b })
     }
+    setDirty(false)
   }
 
   const exportJson = () => {
@@ -68,10 +72,26 @@ export function Settings() {
       <section className="space-y-4 rounded-3xl border border-line bg-card p-5">
         <p className="text-[13px] font-extrabold tracking-wide text-ink2 uppercase">{t('profiles')}</p>
         <Field label={t('profileAName')}>
-          <input className={inputCls} value={nameA} onChange={(e) => setNameA(e.target.value)} onBlur={persistNames} />
+          <input
+            className={inputCls}
+            value={nameA}
+            onChange={(e) => {
+              setNameA(e.target.value)
+              setDirty(true)
+            }}
+            onBlur={persistNames}
+          />
         </Field>
         <Field label={t('profileBName')}>
-          <input className={inputCls} value={nameB} onChange={(e) => setNameB(e.target.value)} onBlur={persistNames} />
+          <input
+            className={inputCls}
+            value={nameB}
+            onChange={(e) => {
+              setNameB(e.target.value)
+              setDirty(true)
+            }}
+            onBlur={persistNames}
+          />
         </Field>
       </section>
 

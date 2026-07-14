@@ -163,7 +163,7 @@ export function Home({
               <div className="space-y-3">
                 {groups.map(([date, occs]) => (
                   <div key={date}>
-                    <p className="mb-1 px-1 text-[12px] font-bold text-ink2 capitalize">
+                    <p className="mb-1 px-1 text-[12px] font-bold text-ink2">
                       {relativeDay(date, today, t, locale)}
                     </p>
                     <div className="divide-y divide-line rounded-2xl border border-line bg-card">
@@ -206,5 +206,6 @@ function relativeDay(
   const diff = daysBetween(today, date)
   if (diff === 0) return t('today')
   if (diff === 1) return t('tomorrow')
-  return formatDay(date, locale)
+  const s = formatDay(date, locale)
+  return s.charAt(0).toUpperCase() + s.slice(1)
 }

@@ -16,7 +16,7 @@ export default function App() {
   const { status } = useAppData()
 
   if (status === 'boot') return <Splash />
-  if (status === 'welcome' || status === 'auth') return <Welcome key={status} />
+  if (status === 'welcome' || status === 'auth') return <Welcome />
   return <Shell />
 }
 
@@ -29,6 +29,20 @@ function Splash() {
       </div>
       <p className="text-sm font-semibold text-ink2">{t('loading')}</p>
     </div>
+  )
+}
+
+function SaveErrorBanner() {
+  const { saveError, dismissSaveError } = useAppData()
+  const { t } = useI18n()
+  if (!saveError) return null
+  return (
+    <button
+      onClick={dismissSaveError}
+      className="anim-rise fixed inset-x-4 top-[max(env(safe-area-inset-top),12px)] z-50 rounded-2xl bg-bad px-4 py-3 text-left text-[13px] font-bold text-white shadow-lg"
+    >
+      ⚠️ {t('saveFailed')}
+    </button>
   )
 }
 
@@ -77,6 +91,7 @@ function Shell() {
       </main>
 
       <TabBar tab={tab} onTab={setTab} onAdd={openAdd} />
+      <SaveErrorBanner />
 
       <AddSheet
         open={sheetOpen}

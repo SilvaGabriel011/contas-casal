@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAppData } from '../data/DataProvider'
 import { useI18n } from '../lib/i18n'
 import { getCloudConfig, hasBakedCloudConfig } from '../lib/config'
@@ -11,6 +11,10 @@ export function Welcome() {
   const { t } = useI18n()
 
   const [step, setStep] = useState<Step>(status === 'auth' ? 'auth' : 'menu')
+
+  useEffect(() => {
+    if (status === 'auth') setStep('auth')
+  }, [status])
   const [url, setUrl] = useState('')
   const [anonKey, setAnonKey] = useState('')
   const [email, setEmail] = useState('')
@@ -32,7 +36,7 @@ export function Welcome() {
     const u = url.trim().replace(/\/+$/, '')
     const k = anonKey.trim()
     if (!/^https:\/\/.+\.supabase\.co$/.test(u) || k.length < 20) {
-      setMessage({ kind: 'error', text: t('authErrorGeneric', { msg: 'URL/key' }) })
+      setMessage({ kind: 'error', text: t('invalidSupabaseConfig') })
       return
     }
     setMessage(null)
@@ -46,6 +50,7 @@ export function Welcome() {
     try {
       const result = mode === 'in' ? await signIn(email.trim(), password) : await signUp(email.trim(), password)
       if (result === 'confirm-email') setMessage({ kind: 'info', text: t('signUpDone') })
+      else if (result === 'missing-config') setMessage({ kind: 'error', text: t('missingConfig') })
       else if (result) setMessage({ kind: 'error', text: t('authErrorGeneric', { msg: result }) })
     } finally {
       setBusy(false)

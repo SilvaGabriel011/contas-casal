@@ -114,12 +114,16 @@ export function AddSheet({
     }
   }
 
-  const amount = parseAmount(amountRaw)
+  const decimalSep = locale.startsWith('pt') ? ',' : '.'
+  const amount = parseAmount(amountRaw, decimalSep)
   const nInstallments = Math.max(1, Math.floor(Number(installments) || 0))
 
   const save = async () => {
     if (!name.trim()) return setError(t('fillName'))
     if (amount === null || amount <= 0) return setError(t('invalidAmount'))
+    if (editItem && !snapshot.items.some((i) => i.id === editItem.id)) return setError(t('deletedElsewhere'))
+    if (editIncome && !snapshot.incomes.some((i) => i.id === editIncome.id))
+      return setError(t('deletedElsewhere'))
 
     if (kind === 'income') {
       const income: Income = {
@@ -215,8 +219,13 @@ export function AddSheet({
               value={amountRaw}
               onChange={(e) => setAmountRaw(e.target.value)}
               inputMode="decimal"
-              placeholder="0,00"
+              placeholder={decimalSep === ',' ? '0,00' : '0.00'}
             />
+            {amount !== null && /[.,]/.test(amountRaw) && (
+              <span className="num mt-1 block text-[12px] font-semibold text-ink2">
+                = {formatMoney(amount, currency, locale)}
+              </span>
+            )}
           </Field>
           <Field label={t('currency')}>
             <Segmented
@@ -281,10 +290,10 @@ export function AddSheet({
               />
             </Field>
             {editing && (
-              <Field label={t('active')}>
+              <Field label={t('activeOne')}>
                 <Segmented
                   options={[
-                    { value: 'on', label: `✅ ${t('active')}` },
+                    { value: 'on', label: `✅ ${t('activeOne')}` },
                     { value: 'off', label: `⏸️ ${t('inactive')}` },
                   ]}
                   value={incomeActive ? 'on' : 'off'}

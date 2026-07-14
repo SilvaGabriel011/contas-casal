@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { HouseholdSettings, Income, Item, Payment, Snapshot } from '../types'
 import { getCloudConfig, getMode, saveCloudConfig, setMode, type AppMode, type CloudConfig } from '../lib/config'
 import { EMPTY_SNAPSHOT, type DataAdapter } from './adapter'
@@ -22,6 +23,8 @@ interface AppData {
   snapshot: Snapshot
   loading: boolean
   userEmail: string | null
+  saveError: boolean
+  dismissSaveError: () => void
   chooseDemo: () => void
   chooseCloud: (cfg: CloudConfig) => void
   signIn: (email: string, password: string) => Promise<string | null>
@@ -45,8 +48,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [snapshot, setSnapshot] = useState<Snapshot>(EMPTY_SNAPSHOT)
   const [loading, setLoading] = useState(false)
   const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState(false)
   const adapterRef = useRef<DataAdapter | null>(null)
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const unsubDataRef = useRef<(() => void) | null>(null)
+  const unsubAuthRef = useRef<(() => void) | null>(null)
 
   const refetch = useCallback(async () => {
     const adapter = adapterRef.current
@@ -77,11 +83,46 @@ export function DataProvider({ children }: { children: ReactNode }) {
     []
   )
 
+  const teardownCloud = useCallback(() => {
+    unsubDataRef.current?.()
+    unsubDataRef.current = null
+  }, [])
+
+  const handleSignedOut = useCallback(() => {
+    teardownCloud()
+    adapterRef.current = null
+    setUserEmail(null)
+    setSnapshot(EMPTY_SNAPSHOT)
+    setStatus('auth')
+  }, [teardownCloud])
+
+  // Registered once per page load, whichever path establishes the session.
+  const ensureAuthListener = useCallback(
+    (sb: SupabaseClient) => {
+      if (unsubAuthRef.current) return
+      const { data } = sb.auth.onAuthStateChange((event) => {
+        if (event === 'SIGNED_OUT') handleSignedOut()
+      })
+      unsubAuthRef.current = () => data.subscription.unsubscribe()
+    },
+    [handleSignedOut]
+  )
+
+  const startCloudAdapter = useCallback(
+    async (sb: SupabaseClient, userId: string, email: string | null) => {
+      setUserEmail(email)
+      const adapter = new SupabaseAdapter(sb, userId)
+      await startAdapter(adapter)
+      teardownCloud()
+      unsubDataRef.current = adapter.subscribe?.(scheduleRefetch) ?? null
+      ensureAuthListener(sb)
+    },
+    [startAdapter, teardownCloud, scheduleRefetch, ensureAuthListener]
+  )
+
   // Boot: restore previous mode/session.
   useEffect(() => {
     let cancelled = false
-    let unsubData: (() => void) | undefined
-    let unsubAuth: (() => void) | undefined
 
     async function boot() {
       const savedMode = getMode()
@@ -99,23 +140,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
           if (cancelled) return
           const session = data.session
           if (session) {
-            setUserEmail(session.user.email ?? null)
-            const adapter = new SupabaseAdapter(sb, session.user.id)
-            await startAdapter(adapter)
-            unsubData = adapter.subscribe?.(scheduleRefetch)
+            await startCloudAdapter(sb, session.user.id, session.user.email ?? null)
           } else {
             setStatus('auth')
+            ensureAuthListener(sb)
           }
-          const { data: sub } = sb.auth.onAuthStateChange((event) => {
-            if (event === 'SIGNED_OUT') {
-              unsubData?.()
-              adapterRef.current = null
-              setUserEmail(null)
-              setSnapshot(EMPTY_SNAPSHOT)
-              setStatus('auth')
-            }
-          })
-          unsubAuth = () => sub.subscription.unsubscribe()
           return
         }
       }
@@ -125,10 +154,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
     boot()
     return () => {
       cancelled = true
-      unsubData?.()
-      unsubAuth?.()
+      unsubDataRef.current?.()
+      unsubDataRef.current = null
+      unsubAuthRef.current?.()
+      unsubAuthRef.current = null
     }
-  }, [startAdapter, scheduleRefetch])
+  }, [startAdapter, startCloudAdapter, ensureAuthListener])
+
+  // The realtime socket dies while iOS freezes the PWA in the background and
+  // missed events are not replayed — refetch whenever the app becomes usable again.
+  useEffect(() => {
+    if (mode !== 'cloud') return
+    const onWake = () => {
+      if (!document.hidden) scheduleRefetch()
+    }
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('online', onWake)
+    return () => {
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('online', onWake)
+    }
+  }, [mode, scheduleRefetch])
 
   const chooseDemo = useCallback(() => {
     setMode('demo')
@@ -150,16 +196,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const { data } = await sb.auth.getSession()
     const session = data.session
     if (!session) return
-    setUserEmail(session.user.email ?? null)
-    const adapter = new SupabaseAdapter(sb, session.user.id)
-    await startAdapter(adapter)
-    adapter.subscribe?.(scheduleRefetch)
-  }, [startAdapter, scheduleRefetch])
+    await startCloudAdapter(sb, session.user.id, session.user.email ?? null)
+  }, [startCloudAdapter])
 
   const signIn = useCallback(
     async (email: string, password: string): Promise<string | null> => {
       const cfg = getCloudConfig()
-      if (!cfg) return 'missing config'
+      if (!cfg) return 'missing-config'
       const sb = getSupabase(cfg)
       const { error } = await sb.auth.signInWithPassword({ email, password })
       if (error) return error.message
@@ -172,7 +215,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const signUp = useCallback(
     async (email: string, password: string): Promise<'confirm-email' | string | null> => {
       const cfg = getCloudConfig()
-      if (!cfg) return 'missing config'
+      if (!cfg) return 'missing-config'
       const sb = getSupabase(cfg)
       const { data, error } = await sb.auth.signUp({ email, password })
       if (error) return error.message
@@ -186,34 +229,42 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     const cfg = getCloudConfig()
     if (cfg) await getSupabase(cfg).auth.signOut()
-    adapterRef.current = null
-    setUserEmail(null)
-    setSnapshot(EMPTY_SNAPSHOT)
-    setStatus('auth')
-  }, [])
+    handleSignedOut()
+  }, [handleSignedOut])
 
   const backToWelcome = useCallback(() => {
+    teardownCloud()
     setMode(null)
     setModeState(null)
     adapterRef.current = null
     setSnapshot(EMPTY_SNAPSHOT)
     setStatus('welcome')
+  }, [teardownCloud])
+
+  // Optimistic mutation helper: apply locally, persist, roll back on failure.
+  const mutate = useCallback(async (apply: (s: Snapshot) => Snapshot, persist: (a: DataAdapter) => Promise<void>) => {
+    const adapter = adapterRef.current
+    if (!adapter) return
+    let before: Snapshot | null = null
+    setSnapshot((s) => {
+      before = s
+      return apply(s)
+    })
+    try {
+      await persist(adapter)
+      setSaveError(false)
+    } catch {
+      setSaveError(true)
+      try {
+        setSnapshot(await adapter.load())
+      } catch {
+        // offline and unable to reload: undo the never-persisted change
+        if (before) setSnapshot(before)
+      }
+    }
   }, [])
 
-  // Optimistic mutation helper: apply locally, persist, refetch on failure.
-  const mutate = useCallback(
-    async (apply: (s: Snapshot) => Snapshot, persist: (a: DataAdapter) => Promise<void>) => {
-      const adapter = adapterRef.current
-      if (!adapter) return
-      setSnapshot(apply)
-      try {
-        await persist(adapter)
-      } catch {
-        await refetch()
-      }
-    },
-    [refetch]
-  )
+  const dismissSaveError = useCallback(() => setSaveError(false), [])
 
   const upsertItem = useCallback(
     (item: Item) =>
@@ -308,6 +359,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       snapshot,
       loading,
       userEmail,
+      saveError,
+      dismissSaveError,
       chooseDemo,
       chooseCloud,
       signIn,
@@ -328,6 +381,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       snapshot,
       loading,
       userEmail,
+      saveError,
+      dismissSaveError,
       chooseDemo,
       chooseCloud,
       signIn,

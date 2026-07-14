@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 
 export type Lang = 'pt' | 'en'
 
@@ -8,6 +8,11 @@ const dict = {
   pt: {
     appName: 'Contas do Casal',
     tagline: 'As finanças de vocês dois, na Austrália e no Brasil, num lugar só.',
+    activeOne: 'Ativa',
+    invalidSupabaseConfig: 'URL ou chave inválida — confira os dois valores no painel do Supabase.',
+    missingConfig: 'Configuração da nuvem não encontrada — volte e cole a URL e a chave de novo.',
+    saveFailed: 'Não foi possível salvar — confira a internet e tente de novo.',
+    deletedElsewhere: 'Este item foi excluído no outro celular.',
     // profiles
     couple: 'Casal',
     // tabs
@@ -146,7 +151,7 @@ const dict = {
     about: 'Feito com ❤️ para dois.',
     // welcome / auth
     welcomeTitle: 'Contas do Casal',
-    welcomeSubtitle: 'AUD e BRL lado a lado, sincronizado entre os dois celulares.',
+    welcomeSubtitle: 'AUD e BRL lado a lado, sincronizados entre os dois celulares.',
     tryDemo: 'Experimentar sem conta',
     tryDemoHint: 'dados só neste aparelho',
     cloudLogin: 'Entrar com a nuvem',
@@ -177,6 +182,11 @@ const dict = {
   en: {
     appName: 'Couple Bills',
     tagline: 'Both your finances, Australia and Brazil, in one place.',
+    activeOne: 'Active',
+    invalidSupabaseConfig: 'Invalid URL or key — double-check both values in your Supabase dashboard.',
+    missingConfig: 'Cloud config not found — go back and paste the URL and key again.',
+    saveFailed: "Couldn't save — check your connection and try again.",
+    deletedElsewhere: 'This item was deleted on the other phone.',
     couple: 'Couple',
     tabHome: 'Home',
     tabBills: 'Bills',
@@ -352,8 +362,11 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const setLang = useCallback((l: Lang) => {
     localStorage.setItem(STORAGE_KEY, l)
     setLangState(l)
-    document.documentElement.lang = l === 'pt' ? 'pt-BR' : 'en'
   }, [])
+
+  useEffect(() => {
+    document.documentElement.lang = lang === 'pt' ? 'pt-BR' : 'en-AU'
+  }, [lang])
 
   const value = useMemo<I18n>(() => {
     const locale = lang === 'pt' ? 'pt-BR' : 'en-AU'
