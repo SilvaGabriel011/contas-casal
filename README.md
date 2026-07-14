@@ -32,27 +32,28 @@ A nuvem é o que faz o celular de um atualizar na hora no celular do outro.
 
 > Dicas no painel do Supabase: em **Authentication → Sign In / Up → Email**, desative **Confirm email** para não precisar confirmar o e-mail no primeiro acesso — e depois de criar a conta de vocês, desative **Allow new users to sign up**.
 
-### Opcional: deixar as chaves embutidas no app
+### Recomendado: deixar as chaves embutidas no app
 
-Para pular a tela de colar URL/chave, defina as variáveis no ambiente de build:
+Para pular a tela de colar URL/chave, defina as variáveis de ambiente no Vercel
+(*Project Settings → Environment Variables*, ver seção Publicação abaixo):
 
-- **GitHub Pages**: em *Settings → Secrets and variables → Actions → Variables*, crie `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` e rode o deploy de novo.
-- **Vercel**: em *Project Settings → Environment Variables*, crie as mesmas duas variáveis.
+| Nome | Valor |
+| --- | --- |
+| `VITE_SUPABASE_URL` | a Project URL do Supabase (`https://xxxx.supabase.co`) |
+| `VITE_SUPABASE_ANON_KEY` | a chave `anon public` do Supabase |
 
 A anon key é pública por design — a segurança vem das políticas de RLS criadas pelo `schema.sql`.
 
-## 🚀 Publicação
+## 🚀 Publicação (Vercel)
 
-### GitHub Pages (já configurado)
+1. Entre em [vercel.com](https://vercel.com) com a conta do GitHub e clique em **Add New → Project**.
+2. Importe o repositório `contas-casal`. O Vercel detecta Vite sozinho — não mude build command nem output.
+3. Antes do primeiro deploy, abra **Environment Variables** e adicione `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (valores acima). Marque os três ambientes (Production/Preview/Development).
+4. **Deploy**. O app fica em `https://<nome-do-projeto>.vercel.app` — e todo push na branch de produção redeploya sozinho.
 
-O workflow em `.github/workflows/deploy.yml` publica automaticamente a cada push.
-Só é preciso ativar uma vez: **Settings → Pages → Source: GitHub Actions**.
+O arquivo `vercel.json` já configura os headers de segurança (CSP `frame-ancestors`, nosniff, referrer/permissions policy) e o cache correto do service worker e dos assets.
 
-O app fica em `https://silvagabriel011.github.io/contas-casal/`.
-
-### Vercel (alternativa)
-
-Importe o repositório em [vercel.com/new](https://vercel.com/new) — é um projeto Vite padrão, nenhuma configuração extra é necessária.
+> O workflow `.github/workflows/ci.yml` roda os testes a cada push. O GitHub Pages foi descontinuado em favor do Vercel.
 
 ## 🛠️ Desenvolvimento
 
