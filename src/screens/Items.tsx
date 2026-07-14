@@ -89,7 +89,7 @@ export function Items({
         <EmptyState emoji="🗂️" title={t('noItems')} />
       ) : (
         <div className="divide-y divide-line rounded-2xl border border-line bg-card">
-          {items.map((item) => {
+          {items.map((item, idx) => {
             const finished = item.archived || isItemFinished(item, snapshot.payments)
             const progress =
               item.kind === 'installment' && item.installmentsTotal
@@ -105,7 +105,8 @@ export function Items({
               <button
                 key={item.id}
                 onClick={() => onEditItem(item)}
-                className={`flex w-full items-center gap-3 px-4 py-3 text-left ${finished ? 'opacity-55' : ''}`}
+                className={`anim-rise flex w-full items-center gap-3 px-4 py-3 text-left min-[430px]:py-3.5 ${finished ? 'opacity-55' : ''}`}
+                style={{ animationDelay: `${Math.min(idx * 35, 400)}ms` }}
               >
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card2 text-xl">
                   {categoryEmoji(item.category, snapshot.settings)}

@@ -42,6 +42,20 @@ interface AppData {
 
 const Ctx = createContext<AppData | null>(null)
 
+const cacheKey = (userId: string) => `cc.cache.v1.${userId}`
+
+function readSnapshotCache(userId: string): Snapshot | null {
+  try {
+    const raw = localStorage.getItem(cacheKey(userId))
+    if (!raw) return null
+    const s = JSON.parse(raw)
+    if (!Array.isArray(s.items) || !Array.isArray(s.incomes) || !Array.isArray(s.payments)) return null
+    return { ...EMPTY_SNAPSHOT, ...s, settings: { ...EMPTY_SNAPSHOT.settings, ...s.settings } }
+  } catch {
+    return null
+  }
+}
+
 export function DataProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>('boot')
   const [mode, setModeState] = useState<AppMode | null>(null)
@@ -53,6 +67,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const unsubDataRef = useRef<(() => void) | null>(null)
   const unsubAuthRef = useRef<(() => void) | null>(null)
+  const userIdRef = useRef<string | null>(null)
 
   const refetch = useCallback(async () => {
     const adapter = adapterRef.current
@@ -91,6 +106,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const handleSignedOut = useCallback(() => {
     teardownCloud()
     adapterRef.current = null
+    if (userIdRef.current) {
+      localStorage.removeItem(cacheKey(userIdRef.current))
+      userIdRef.current = null
+    }
     setUserEmail(null)
     setSnapshot(EMPTY_SNAPSHOT)
     setStatus('auth')
@@ -111,14 +130,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const startCloudAdapter = useCallback(
     async (sb: SupabaseClient, userId: string, email: string | null) => {
       setUserEmail(email)
+      userIdRef.current = userId
       const adapter = new SupabaseAdapter(sb, userId)
-      await startAdapter(adapter)
+      const cached = readSnapshotCache(userId)
+      if (cached) {
+        // Instant open: render the last known data, revalidate in background.
+        adapterRef.current = adapter
+        setSnapshot(cached)
+        setStatus('ready')
+        refetch()
+      } else {
+        await startAdapter(adapter)
+      }
       teardownCloud()
       unsubDataRef.current = adapter.subscribe?.(scheduleRefetch) ?? null
       ensureAuthListener(sb)
     },
-    [startAdapter, teardownCloud, scheduleRefetch, ensureAuthListener]
+    [startAdapter, teardownCloud, scheduleRefetch, ensureAuthListener, refetch]
   )
+
+  // Write-through cache: every fresh snapshot becomes the next launch's instant paint.
+  useEffect(() => {
+    if (mode !== 'cloud' || status !== 'ready' || !userIdRef.current) return
+    try {
+      localStorage.setItem(cacheKey(userIdRef.current), JSON.stringify(snapshot))
+    } catch {
+      /* storage full — instant open just won't have fresh data */
+    }
+  }, [snapshot, mode, status])
 
   // Boot: restore previous mode/session.
   useEffect(() => {

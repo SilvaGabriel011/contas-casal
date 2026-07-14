@@ -1,3 +1,4 @@
+import { useState, type CSSProperties } from 'react'
 import type { Occurrence, Profile } from '../types'
 import { categoryEmoji } from '../lib/categories'
 import { useAppData } from '../data/DataProvider'
@@ -5,20 +6,42 @@ import { useI18n, formatDay } from '../lib/i18n'
 import { formatMoney, CURRENCY_FLAG } from '../lib/money'
 import { daysBetween, todayISO } from '../lib/dates'
 
+const CONFETTI_COLORS = ['#ff5c8a', '#6d5cf6', '#34d399', '#fbbf24', '#38bdf8']
+
+type Particle = { dx: string; dy: string; c: string; delay: string }
+
 export function OccurrenceRow({
   occ,
   profile,
   onEdit,
+  style,
 }: {
   occ: Occurrence
   profile: Profile
   onEdit: () => void
+  style?: CSSProperties
 }) {
   const { setPaid, snapshot } = useAppData()
   const { t, locale } = useI18n()
+  const [burst, setBurst] = useState<Particle[] | null>(null)
   const today = todayISO()
   const paid = Boolean(occ.payment)
   const overdueDays = paid ? 0 : daysBetween(occ.dueDate, today)
+
+  const togglePaid = () => {
+    if (!paid) {
+      setBurst(
+        Array.from({ length: 10 }, () => ({
+          dx: `${Math.round((Math.random() - 0.5) * 100)}px`,
+          dy: `${Math.round((Math.random() - 0.72) * 100)}px`,
+          c: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+          delay: `${Math.round(Math.random() * 90)}ms`,
+        }))
+      )
+      setTimeout(() => setBurst(null), 900)
+    }
+    setPaid(occ.item, occ.dueDate, !paid)
+  }
 
   const { item } = occ
   const ownerName =
@@ -30,7 +53,10 @@ export function OccurrenceRow({
   else dueLabel = formatDay(occ.dueDate, locale)
 
   return (
-    <div className={`flex items-center gap-3 px-4 py-3 ${paid ? 'opacity-55' : ''}`}>
+    <div
+      className={`anim-rise flex items-center gap-3 px-4 py-3 transition-opacity min-[430px]:py-3.5 ${paid ? 'opacity-55' : ''}`}
+      style={style}
+    >
       <button onClick={onEdit} className="flex min-w-0 flex-1 items-center gap-3 text-left">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card2 text-xl">
           {categoryEmoji(item.category, snapshot.settings)}
@@ -61,13 +87,23 @@ export function OccurrenceRow({
       </span>
 
       <button
-        onClick={() => setPaid(item, occ.dueDate, !paid)}
+        onClick={togglePaid}
         aria-label={paid ? t('unpay') : t('pay')}
-        className={`press flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-sm font-bold transition-colors ${
+        className={`press relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 text-base font-bold transition-colors ${
           paid ? 'border-good bg-good text-white' : 'border-line text-transparent'
         }`}
       >
         {paid && <span className="anim-pop">✓</span>}
+        {burst && (
+          <span className="confetti">
+            {burst.map((p, i) => (
+              <i
+                key={i}
+                style={{ '--dx': p.dx, '--dy': p.dy, '--c': p.c, animationDelay: p.delay } as CSSProperties}
+              />
+            ))}
+          </span>
+        )}
       </button>
     </div>
   )

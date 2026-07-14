@@ -43,7 +43,7 @@ export function Chip({
   return (
     <button
       onClick={onClick}
-      className={`press shrink-0 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors ${
+      className={`press shrink-0 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors min-[430px]:px-4 min-[430px]:py-2 ${
         selected ? 'border-transparent grad-accent text-white' : 'border-line bg-card text-ink2'
       }`}
     >
@@ -75,26 +75,47 @@ export function Sheet({
   children: ReactNode
   title?: string
 }) {
-  const [mounted, setMounted] = useState(open)
+  const [visible, setVisible] = useState(open)
+  const [closing, setClosing] = useState(false)
+
   useEffect(() => {
-    if (open) setMounted(true)
+    if (open) {
+      setVisible(true)
+      setClosing(false)
+      return
+    }
+    if (!visible) return
+    setClosing(true)
+    const timer = setTimeout(() => {
+      setVisible(false)
+      setClosing(false)
+    }, 250)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   useEffect(() => {
-    if (!open) return
+    if (!visible) return
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     return () => {
       document.body.style.overflow = prev
     }
-  }, [open])
+  }, [visible])
 
-  if (!mounted || !open) return null
+  if (!visible) return null
 
   return createPortal(
     <div className="fixed inset-0 z-50">
-      <div className="anim-fade absolute inset-0 bg-black/45" onClick={onClose} />
-      <div className="anim-sheet absolute inset-x-0 bottom-0 max-h-[92dvh] overflow-y-auto rounded-t-3xl bg-app pb-[max(env(safe-area-inset-bottom),16px)]">
+      <div
+        className={`absolute inset-0 bg-black/45 ${closing ? 'anim-fade-out' : 'anim-fade'}`}
+        onClick={onClose}
+      />
+      <div
+        className={`absolute inset-x-0 bottom-0 max-h-[92dvh] overflow-y-auto rounded-t-3xl bg-app pb-[max(env(safe-area-inset-bottom),16px)] ${
+          closing ? 'anim-sheet-out' : 'anim-sheet'
+        }`}
+      >
         <div className="sticky top-0 z-10 bg-app pt-3 pb-2">
           <div className="mx-auto h-1.5 w-10 rounded-full bg-line" />
           {title && <h2 className="mt-3 px-5 text-xl font-bold text-ink">{title}</h2>}
@@ -104,6 +125,10 @@ export function Sheet({
     </div>,
     document.body
   )
+}
+
+export function Skeleton({ className = '' }: { className?: string }) {
+  return <div className={`skeleton rounded-2xl ${className}`} />
 }
 
 export function EmptyState({ emoji, title, body }: { emoji: string; title: string; body?: string }) {

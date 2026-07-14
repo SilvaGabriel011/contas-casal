@@ -1,6 +1,7 @@
 import type { Currency } from '../types'
 import { useI18n } from '../lib/i18n'
 import { formatMoney, formatMoneyShort, CURRENCY_FLAG } from '../lib/money'
+import { useCountUp } from '../lib/useCountUp'
 import { ProgressBar } from './ui'
 
 export function SummaryCard({
@@ -19,15 +20,16 @@ export function SummaryCard({
   const { t, locale } = useI18n()
   const remaining = Math.max(0, totalMonth - paidMonth)
   const leftover = incomeMonth - totalMonth
+  const animatedTotal = useCountUp(totalMonth)
 
   return (
     <div
-      className={`anim-rise relative w-full shrink-0 snap-center overflow-hidden rounded-3xl p-5 text-white shadow-lg shadow-black/15 ${
+      className={`anim-rise relative w-full shrink-0 snap-center overflow-hidden rounded-3xl p-5 text-white shadow-lg shadow-black/15 min-[430px]:p-6 ${
         currency === 'AUD' ? 'grad-aud' : 'grad-brl'
       }`}
     >
-      <div className="pointer-events-none absolute -top-14 -right-10 h-44 w-44 rounded-full bg-white/12" />
-      <div className="pointer-events-none absolute -bottom-20 -left-8 h-40 w-40 rounded-full bg-black/10" />
+      <div className="anim-float-a pointer-events-none absolute -top-14 -right-10 h-44 w-44 rounded-full bg-white/12" />
+      <div className="anim-float-b pointer-events-none absolute -bottom-20 -left-8 h-40 w-40 rounded-full bg-black/10" />
 
       <div className="flex items-center justify-between">
         <span className="text-sm font-bold tracking-wide">
@@ -36,8 +38,8 @@ export function SummaryCard({
         <span className="text-xs font-medium text-white/85 capitalize">{monthLabel}</span>
       </div>
 
-      <p className="num mt-3 text-[34px] leading-none font-extrabold tracking-tight">
-        {formatMoney(totalMonth, currency, locale)}
+      <p className="num mt-3 text-[34px] leading-none font-extrabold tracking-tight min-[430px]:text-[40px]">
+        {formatMoney(animatedTotal, currency, locale)}
       </p>
       <p className="mt-1 text-[13px] font-medium text-white/85">{t('ofBills')} · {t('thisMonth')}</p>
 

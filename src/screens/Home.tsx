@@ -118,7 +118,7 @@ export function Home({
 
           {payday && (
             <div className="anim-rise flex items-center gap-3 rounded-2xl border border-line bg-card px-4 py-3">
-              <span className="text-2xl">📅</span>
+              <span className="anim-wiggle text-2xl">📅</span>
               <div className="min-w-0 flex-1">
                 <p className="text-[13px] font-bold text-ink">
                   {t('nextPayday')}: {relativeDay(payday.date, today, t, locale)}
@@ -141,12 +141,13 @@ export function Home({
                 ⚠️ {t('overdue')}
               </h2>
               <div className="divide-y divide-line rounded-2xl border border-bad/30 bg-card">
-                {overdue.map((o) => (
+                {overdue.map((o, i) => (
                   <OccurrenceRow
                     key={`${o.item.id}|${o.dueDate}`}
                     occ={o}
                     profile={profile}
                     onEdit={() => onEditItem(o.item)}
+                    style={{ animationDelay: `${Math.min(i * 45, 300)}ms` }}
                   />
                 ))}
               </div>
@@ -161,18 +162,23 @@ export function Home({
               <EmptyState emoji="🌴" title={t('noUpcoming')} />
             ) : (
               <div className="space-y-3">
-                {groups.map(([date, occs]) => (
-                  <div key={date}>
+                {groups.map(([date, occs], gi) => (
+                  <div
+                    key={date}
+                    className="anim-rise"
+                    style={{ animationDelay: `${Math.min(gi * 60, 420)}ms` }}
+                  >
                     <p className="mb-1 px-1 text-[12px] font-bold text-ink2">
                       {relativeDay(date, today, t, locale)}
                     </p>
                     <div className="divide-y divide-line rounded-2xl border border-line bg-card">
-                      {occs.map((o) => (
+                      {occs.map((o, i) => (
                         <OccurrenceRow
                           key={`${o.item.id}|${o.dueDate}`}
                           occ={o}
                           profile={profile}
                           onEdit={() => onEditItem(o.item)}
+                          style={{ animationDelay: `${Math.min(gi * 60 + i * 40, 500)}ms` }}
                         />
                       ))}
                     </div>

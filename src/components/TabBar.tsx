@@ -25,14 +25,19 @@ export function TabBar({
     <button
       key={key}
       onClick={() => onTab(key)}
-      className="press flex flex-1 flex-col items-center gap-0.5 py-2"
+      className="press flex flex-1 flex-col items-center gap-0.5 py-2.5"
       aria-label={label}
       aria-current={tab === key ? 'page' : undefined}
     >
-      <span className={`text-[22px] leading-none ${tab === key ? '' : 'opacity-45 grayscale'}`}>
+      <span
+        key={tab === key ? 'active' : 'idle'}
+        className={`text-[22px] leading-none min-[430px]:text-2xl ${tab === key ? 'anim-pop' : 'opacity-45 grayscale'}`}
+      >
         {ICONS[key]}
       </span>
-      <span className={`text-[10px] font-semibold ${tab === key ? 'text-ink' : 'text-ink2'}`}>{label}</span>
+      <span className={`text-[10px] font-semibold min-[430px]:text-[11px] ${tab === key ? 'text-ink' : 'text-ink2'}`}>
+        {label}
+      </span>
     </button>
   )
 
@@ -44,7 +49,7 @@ export function TabBar({
           <button
             onClick={onAdd}
             aria-label="+"
-            className="press grad-accent -mt-5 flex h-14 w-14 items-center justify-center rounded-full text-3xl font-light text-white shadow-lg shadow-black/25"
+            className="press grad-accent fab-live -mt-6 flex h-16 w-16 items-center justify-center rounded-full text-4xl font-light text-white shadow-lg shadow-black/25"
           >
             +
           </button>

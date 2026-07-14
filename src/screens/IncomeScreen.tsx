@@ -5,6 +5,7 @@ import { useI18n, formatDay, type TKey } from '../lib/i18n'
 import { formatMoney, formatMoneyShort, CURRENCY_FLAG } from '../lib/money'
 import { addDays, endOfMonth, startOfMonth, todayISO } from '../lib/dates'
 import { hourlyInfo, incomeDates, monthlyEquivalent, nextIncomeDate, visibleToProfile } from '../lib/schedule'
+import { useCountUp } from '../lib/useCountUp'
 import { ProfileSwitcher } from '../components/ProfileSwitcher'
 import { EmptyState } from '../components/ui'
 
@@ -14,6 +15,42 @@ interface CurrencyStats {
   received: number
   coming: number
   avgHourly: number | null
+}
+
+function StatCard({ stats: s }: { stats: CurrencyStats }) {
+  const { t, locale } = useI18n()
+  const animatedTotal = useCountUp(s.monthTotal)
+  const animatedReceived = useCountUp(s.received)
+  const animatedComing = useCountUp(s.coming)
+  return (
+    <div className="anim-rise rounded-3xl border border-line bg-card p-5 min-[430px]:p-6">
+      <div className="flex items-baseline justify-between">
+        <p className="text-[13px] font-semibold text-ink2">{t('incomeTotalMonth')}</p>
+        {s.avgHourly !== null && (
+          <span className="num rounded-full bg-card2 px-2.5 py-1 text-[12px] font-bold text-ink">
+            ⏱️ {formatMoney(s.avgHourly, s.currency, locale)} {t('avgPerHour')}
+          </span>
+        )}
+      </div>
+      <p className="num mt-1 text-[28px] leading-tight font-extrabold text-ink min-[430px]:text-[32px]">
+        {CURRENCY_FLAG[s.currency]} {formatMoneyShort(animatedTotal, s.currency, locale)}
+      </p>
+      <div className="mt-3 flex gap-2">
+        <div className="flex-1 rounded-2xl bg-good/10 px-3 py-2.5">
+          <p className="text-[11px] font-bold tracking-wide text-good uppercase">✓ {t('receivedSoFar')}</p>
+          <p className="num mt-0.5 text-[15px] font-extrabold text-ink">
+            {formatMoneyShort(animatedReceived, s.currency, locale)}
+          </p>
+        </div>
+        <div className="flex-1 rounded-2xl bg-card2 px-3 py-2.5">
+          <p className="text-[11px] font-bold tracking-wide text-ink2 uppercase">⏳ {t('stillComing')}</p>
+          <p className="num mt-0.5 text-[15px] font-extrabold text-ink">
+            {formatMoneyShort(animatedComing, s.currency, locale)}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export function IncomeScreen({
@@ -103,33 +140,7 @@ export function IncomeScreen({
       <ProfileSwitcher profile={profile} onChange={onProfile} />
 
       {stats.map((s) => (
-        <div key={s.currency} className="anim-rise rounded-3xl border border-line bg-card p-5">
-          <div className="flex items-baseline justify-between">
-            <p className="text-[13px] font-semibold text-ink2">{t('incomeTotalMonth')}</p>
-            {s.avgHourly !== null && (
-              <span className="num rounded-full bg-card2 px-2.5 py-1 text-[12px] font-bold text-ink">
-                ⏱️ {formatMoney(s.avgHourly, s.currency, locale)} {t('avgPerHour')}
-              </span>
-            )}
-          </div>
-          <p className="num mt-1 text-[28px] leading-tight font-extrabold text-ink">
-            {CURRENCY_FLAG[s.currency]} {formatMoneyShort(s.monthTotal, s.currency, locale)}
-          </p>
-          <div className="mt-3 flex gap-2">
-            <div className="flex-1 rounded-2xl bg-good/10 px-3 py-2.5">
-              <p className="text-[11px] font-bold tracking-wide text-good uppercase">✓ {t('receivedSoFar')}</p>
-              <p className="num mt-0.5 text-[15px] font-extrabold text-ink">
-                {formatMoneyShort(s.received, s.currency, locale)}
-              </p>
-            </div>
-            <div className="flex-1 rounded-2xl bg-card2 px-3 py-2.5">
-              <p className="text-[11px] font-bold tracking-wide text-ink2 uppercase">⏳ {t('stillComing')}</p>
-              <p className="num mt-0.5 text-[15px] font-extrabold text-ink">
-                {formatMoneyShort(s.coming, s.currency, locale)}
-              </p>
-            </div>
-          </div>
-        </div>
+        <StatCard key={s.currency} stats={s} />
       ))}
 
       {upcomingPays.length > 0 && (
@@ -138,8 +149,12 @@ export function IncomeScreen({
             📆 {t('nextPays')}
           </h2>
           <div className="divide-y divide-line rounded-2xl border border-line bg-card">
-            {upcomingPays.map(({ date, income }) => (
-              <div key={`${income.id}|${date}`} className="flex items-center gap-3 px-4 py-2.5">
+            {upcomingPays.map(({ date, income }, i) => (
+              <div
+                key={`${income.id}|${date}`}
+                className="anim-rise flex items-center gap-3 px-4 py-2.5"
+                style={{ animationDelay: `${Math.min(i * 40, 320)}ms` }}
+              >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[14px] font-semibold text-ink">
                     {income.name} <span className="font-normal text-ink2">· {ownerName(income)}</span>
@@ -159,14 +174,15 @@ export function IncomeScreen({
         <EmptyState emoji="💸" title={t('noIncomes')} body={t('emptyHomeBody')} />
       ) : (
         <div className="divide-y divide-line rounded-2xl border border-line bg-card">
-          {incomes.map((income) => {
+          {incomes.map((income, idx) => {
             const next = nextIncomeDate(income, today)
             const hourly = hourlyInfo(income)
             return (
               <button
                 key={income.id}
                 onClick={() => onEditIncome(income)}
-                className={`flex w-full items-center gap-3 px-4 py-3.5 text-left ${income.active ? '' : 'opacity-55'}`}
+                className={`anim-rise flex w-full items-center gap-3 px-4 py-3.5 text-left ${income.active ? '' : 'opacity-55'}`}
+                style={{ animationDelay: `${Math.min(idx * 35, 300)}ms` }}
               >
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card2 text-xl">
                   {hourly ? '⏱️' : '💰'}

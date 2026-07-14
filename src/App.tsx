@@ -81,13 +81,15 @@ function Shell() {
 
   return (
     <div className="min-h-dvh">
-      <main className="mx-auto max-w-lg px-4 pt-[max(env(safe-area-inset-top),12px)] pb-36">
-        {tab === 'home' && <Home profile={profile} onProfile={setProfile} onEditItem={openEditItem} />}
-        {tab === 'items' && <Items profile={profile} onProfile={setProfile} onEditItem={openEditItem} />}
-        {tab === 'income' && (
-          <IncomeScreen profile={profile} onProfile={setProfile} onEditIncome={openEditIncome} />
-        )}
-        {tab === 'settings' && <Settings />}
+      <main className="mx-auto max-w-lg px-4 pt-[max(env(safe-area-inset-top),12px)] pb-36 min-[430px]:px-5">
+        <div key={tab} className="anim-screen">
+          {tab === 'home' && <Home profile={profile} onProfile={setProfile} onEditItem={openEditItem} />}
+          {tab === 'items' && <Items profile={profile} onProfile={setProfile} onEditItem={openEditItem} />}
+          {tab === 'income' && (
+            <IncomeScreen profile={profile} onProfile={setProfile} onEditIncome={openEditIncome} />
+          )}
+          {tab === 'settings' && <Settings />}
+        </div>
       </main>
 
       <TabBar tab={tab} onTab={setTab} onAdd={openAdd} />
