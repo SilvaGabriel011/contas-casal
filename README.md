@@ -26,9 +26,11 @@ A nuvem é o que faz o celular de um atualizar na hora no celular do outro.
    - **Project URL** (algo como `https://xxxx.supabase.co`)
    - **anon public key**
 4. Abra o app, toque em **Entrar com a nuvem** e cole os dois valores.
-5. Crie a conta do casal (um e-mail + senha que os dois vão usar) e entre com **a mesma conta nos dois celulares**.
+5. Na aba **✨ Primeira vez**, crie a conta do casal: um e-mail + um **PIN de 4 dígitos**. Nos dois celulares é o mesmo e-mail e o mesmo PIN.
 
-> Dica: em **Authentication → Sign In / Up → Email**, você pode desativar **Confirm email** para não precisar confirmar o e-mail no primeiro acesso.
+> Como funciona: o PIN nunca vai ao servidor — o app o expande numa senha forte e determinística (PBKDF2) que é o que o Supabase recebe. Por isso o mesmo e-mail + PIN funciona em qualquer aparelho.
+
+> Dicas no painel do Supabase: em **Authentication → Sign In / Up → Email**, desative **Confirm email** para não precisar confirmar o e-mail no primeiro acesso — e depois de criar a conta de vocês, desative **Allow new users to sign up**.
 
 ### Opcional: deixar as chaves embutidas no app
 
