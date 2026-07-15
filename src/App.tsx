@@ -12,6 +12,7 @@ import { Items } from './screens/Items'
 import { IncomeScreen } from './screens/IncomeScreen'
 import { More, type MenuEntry } from './screens/More'
 import { ExpensesScreen } from './screens/ExpensesScreen'
+import { SettleScreen } from './screens/SettleScreen'
 import { Welcome } from './screens/Welcome'
 import { AiChat } from './screens/AiChat'
 
@@ -124,6 +125,13 @@ function Shell() {
       labelKey: 'menuExpenses',
       hintKey: 'menuExpensesHint',
       render: () => <ExpensesScreen onEditExpense={openEditExpense} />,
+    },
+    {
+      view: 'settle',
+      emoji: '🤝',
+      labelKey: 'menuSettle',
+      hintKey: 'menuSettleHint',
+      render: () => <SettleScreen />,
     },
   ]
 
