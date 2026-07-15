@@ -9,6 +9,8 @@ import { KIND_CONFIG } from '../lib/kinds'
 import { getDeviceOwner } from '../lib/device'
 import { todayISO } from '../lib/dates'
 import { parseQuickAdd, type QuickDraft } from '../lib/ai'
+import { useDictation } from '../lib/speech'
+import { logError } from '../lib/errors'
 import { inputCls } from './ui'
 
 const TYPE_EMOJI: Record<QuickDraft['type'], string> = {
@@ -27,11 +29,13 @@ export function AiQuickAdd({ onDone }: { onDone: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [drafts, setDrafts] = useState<QuickDraft[] | null>(null)
+  const dictation = useDictation(locale, setText, () => setError(t('speechDenied')))
 
   if (mode !== 'cloud') return null
 
   const run = async () => {
     if (!text.trim() || busy) return
+    if (dictation.listening) dictation.toggle(text)
     setBusy(true)
     setError('')
     setDrafts(null)
@@ -52,6 +56,7 @@ export function AiQuickAdd({ onDone }: { onDone: () => void }) {
       if (result.length === 0) setError(t('aiQuickNone'))
       else setDrafts(result)
     } catch (e) {
+      logError('ai-parse', e)
       const code = (e as Error).message
       setError(
         code === 'missing-openai-key'
@@ -144,13 +149,32 @@ export function AiQuickAdd({ onDone }: { onDone: () => void }) {
         placeholder={t('aiQuickPlaceholder')}
         rows={2}
       />
-      <button
-        onClick={run}
-        disabled={busy || !text.trim()}
-        className="press grad-accent w-full rounded-xl py-2.5 text-[14px] font-bold text-white disabled:opacity-50"
-      >
-        {busy ? t('aiThinking') : t('aiQuickCreate')}
-      </button>
+      <div className="flex gap-2">
+        {dictation.supported && (
+          <button
+            onClick={() => {
+              setError('')
+              dictation.toggle(text)
+            }}
+            aria-label={dictation.listening ? t('speechListening') : t('speechStart')}
+            className={`press flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg ${
+              dictation.listening ? 'animate-pulse bg-bad text-white' : 'border border-line bg-card text-ink'
+            }`}
+          >
+            {dictation.listening ? '⏹' : '🎤'}
+          </button>
+        )}
+        <button
+          onClick={run}
+          disabled={busy || !text.trim()}
+          className="press grad-accent min-w-0 flex-1 rounded-xl py-2.5 text-[14px] font-bold text-white disabled:opacity-50"
+        >
+          {busy ? t('aiThinking') : t('aiQuickCreate')}
+        </button>
+      </div>
+      {dictation.listening && (
+        <p className="animate-pulse text-[12px] font-semibold text-accent">🎙️ {t('speechListening')}</p>
+      )}
       {error && <p className="text-[13px] font-semibold text-bad">{error}</p>}
       {drafts && (
         <div className="space-y-1.5">

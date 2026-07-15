@@ -11,7 +11,7 @@ import { formatAmountInput, formatMoney, parseAmount } from '../lib/money'
 import { hourlyPerCycle } from '../lib/schedule'
 import { buildRemindersIcs, icsEventCount, shareIcs } from '../lib/ics'
 import { formatDay } from '../lib/i18n'
-import { todayISO } from '../lib/dates'
+import { addMonthsClamped, monthsInclusive, todayISO } from '../lib/dates'
 import { Chip, Field, inputCls, Segmented, Sheet } from './ui'
 
 type FormKind = ItemKind | 'income' | 'expense'
@@ -53,6 +53,8 @@ export function AddSheet({
   const [frequency, setFrequency] = useState<Frequency>('monthly')
   const [startDate, setStartDate] = useState(todayISO())
   const [installments, setInstallments] = useState('12')
+  const [instMode, setInstMode] = useState<'count' | 'until'>('count')
+  const [endMonth, setEndMonth] = useState('')
   const [notes, setNotes] = useState('')
   const [incomeActive, setIncomeActive] = useState(true)
   const [basis, setBasis] = useState<'fixed' | 'hourly'>('fixed')
@@ -83,6 +85,8 @@ export function AddSheet({
       setFrequency(editItem.frequency)
       setStartDate(editItem.startDate)
       setInstallments(String(editItem.installmentsTotal ?? 12))
+      setInstMode('count')
+      setEndMonth(addMonthsClamped(editItem.startDate, (editItem.installmentsTotal ?? 12) - 1).slice(0, 7))
       setNotes(editItem.notes ?? '')
     } else if (editIncome) {
       setKind('income')
@@ -118,6 +122,8 @@ export function AddSheet({
       setFrequency('monthly')
       setStartDate(todayISO())
       setInstallments('12')
+      setInstMode('count')
+      setEndMonth('')
       setNotes('')
       setIncomeActive(true)
       setBasis('fixed')
@@ -147,7 +153,12 @@ export function AddSheet({
   }
 
   const amount = parseAmount(amountRaw, decimalSep)
-  const nInstallments = Math.max(1, Math.floor(Number(installments) || 0))
+  // "until October" mode: the count is derived from first-payment month
+  // through the chosen last month, inclusive.
+  const nInstallments =
+    instMode === 'until' && endMonth
+      ? monthsInclusive(startDate, endMonth)
+      : Math.max(1, Math.floor(Number(installments) || 0))
   const customCategories = snapshot.settings.customCategories
 
   const isHourlyIncome = kind === 'income' && basis === 'hourly'
@@ -229,7 +240,7 @@ export function AddSheet({
       owner,
       frequency: KIND_CONFIG[kind].forcedFrequency ?? frequency,
       startDate,
-      installmentsTotal: kind === 'installment' ? nInstallments : null,
+      installmentsTotal: kind === 'installment' ? Math.max(1, nInstallments) : null,
       notes: notes.trim() || null,
       archived: editItem?.archived ?? false,
       createdAt: editItem?.createdAt ?? new Date().toISOString(),
@@ -302,8 +313,14 @@ export function AddSheet({
       } else if (amount === null || amount <= 0) {
         return t('invalidAmount')
       }
+      if (kind === 'installment' && instMode === 'until' && (!endMonth || nInstallments < 1))
+        return t('invalidEndMonth')
     }
     if (s === 'details' && kind !== 'expense' && !name.trim()) return t('fillName')
+    // The first-payment date lives on this step and can move past the chosen
+    // last month, so the "until" count needs re-checking here too.
+    if (s === 'details' && kind === 'installment' && instMode === 'until' && nInstallments < 1)
+      return t('invalidEndMonth')
     return null
   }
 
@@ -450,22 +467,55 @@ export function AddSheet({
         )}
 
         {kind === 'installment' && (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-3">
             <Field label={t('numInstallments')}>
-              <input
-                className={`${inputCls} num`}
-                value={installments}
-                onChange={(e) => setInstallments(e.target.value)}
-                inputMode="numeric"
-                pattern="[0-9]*"
+              <Segmented
+                options={[
+                  { value: 'count', label: `#️⃣ ${t('instModeCount')}` },
+                  { value: 'until', label: `📅 ${t('instModeUntil')}` },
+                ]}
+                value={instMode}
+                onChange={(v) => {
+                  setInstMode(v)
+                  // Entering "until" mode: seed the month from the current count
+                  // so the picker starts on a sensible value.
+                  if (v === 'until' && !endMonth)
+                    setEndMonth(addMonthsClamped(startDate, nInstallments - 1).slice(0, 7))
+                }}
               />
             </Field>
-            <div className="flex items-end pb-3 text-sm font-semibold text-ink2">
-              {amount !== null && amount > 0 && (
-                <span className="num">
-                  {t('totalOfPlan', { v: formatMoney(amount * nInstallments, currency, locale) })}
-                </span>
+            <div className="grid grid-cols-2 gap-3">
+              {instMode === 'count' ? (
+                <Field label={t('instModeCount')}>
+                  <input
+                    className={`${inputCls} num`}
+                    value={installments}
+                    onChange={(e) => setInstallments(e.target.value)}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                  />
+                </Field>
+              ) : (
+                <Field label={t('lastInstallmentMonth')}>
+                  <input
+                    type="month"
+                    className={inputCls}
+                    value={endMonth}
+                    min={startDate.slice(0, 7)}
+                    onChange={(e) => setEndMonth(e.target.value)}
+                  />
+                </Field>
               )}
+              <div className="flex flex-col justify-end gap-0.5 pb-3 text-sm font-semibold text-ink2">
+                {instMode === 'until' && endMonth && nInstallments >= 1 && (
+                  <span className="num anim-rise">= {t('installmentsComputed', { n: nInstallments })}</span>
+                )}
+                {amount !== null && amount > 0 && nInstallments >= 1 && (
+                  <span className="num">
+                    {t('totalOfPlan', { v: formatMoney(amount * nInstallments, currency, locale) })}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         )}

@@ -84,6 +84,7 @@ export default async function handler(req: Request): Promise<Response> {
       'Output ONLY a JSON object: {"records":[...]}. Each record:',
       '{"type":"expense"|"bill"|"subscription"|"installment"|"purchase"|"income","name":string?,"note":string?,"amount":number,"currency":"AUD"|"BRL","category":string?,"owner":"a"|"b"|"shared"?,"paidBy":"a"|"b"?,"date":"YYYY-MM-DD"?,"frequency":"weekly"|"fortnightly"|"monthly"|"yearly"|"once"?,"installmentsTotal":number?}',
       'Rules: money already spent day-to-day -> expense (note = short description). Recurring obligations -> bill or subscription with frequency and first due date. Brazilian card instalment purchases -> installment with amount per instalment and installmentsTotal. One-off planned purchases -> purchase. Salaries/wages -> income (amount per pay cycle).',
+      'If the user gives when the instalments END instead of a count ("parcelas até outubro", "paying until March 2027"), set installmentsTotal to the number of monthly payments from the first payment month (date, or today if absent) through that month, inclusive; a bare month name means its next occurrence.',
       'currency: "R$", "reais", "conta do Brasil" -> BRL; default AUD. owner default "shared"; if a partner is named, map to a/b. paidBy only for expenses when the payer is explicit.',
       'Relative dates ("ontem", "sexta", "dia 15") resolve against today. If nothing extractable: {"records":[]}.',
     ].join('\n')

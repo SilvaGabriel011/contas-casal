@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 
 import { useAppData } from '../data/DataProvider'
 import { useI18n, type TKey } from '../lib/i18n'
 import { buildAiContext, streamAiChat, type AiMessage } from '../lib/ai'
+import { useDictation } from '../lib/speech'
+import { logError } from '../lib/errors'
 
 const CSV_MARKER = '\n\n[CSV]'
 const MAX_CSV_CHARS = 20_000
@@ -25,13 +27,14 @@ export function AiChat({
   setMessages: Dispatch<SetStateAction<AiMessage[]>>
 }) {
   const { snapshot, getAccessToken } = useAppData()
-  const { t, lang } = useI18n()
+  const { t, lang, locale } = useI18n()
   const [input, setInput] = useState('')
   const [csv, setCsv] = useState<{ name: string; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const dictation = useDictation(locale, setInput, () => setError(t('speechDenied')))
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
@@ -51,6 +54,7 @@ export function AiChat({
   const send = async (text: string) => {
     const question = text.trim()
     if (busy || (!question && !csv)) return
+    if (dictation.listening) dictation.toggle(text)
     const content = csv ? `${question}${CSV_MARKER} ${csv.name}\n${csv.text}` : question
     setError('')
     setInput('')
@@ -69,6 +73,7 @@ export function AiChat({
       }
       if (!acc.trim()) throw new Error('generic')
     } catch (e) {
+      logError('ai-chat', e)
       setMessages(history)
       setError(t(ERROR_KEY[(e as Error).message] ?? 'aiErrorGeneric'))
     } finally {
@@ -174,6 +179,20 @@ export function AiChat({
             >
               📎
             </button>
+            {dictation.supported && (
+              <button
+                onClick={() => {
+                  setError('')
+                  dictation.toggle(input)
+                }}
+                aria-label={dictation.listening ? t('speechListening') : t('speechStart')}
+                className={`press flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-lg ${
+                  dictation.listening ? 'animate-pulse bg-bad text-white' : 'border border-line bg-card'
+                }`}
+              >
+                {dictation.listening ? '⏹' : '🎤'}
+              </button>
+            )}
             <input
               className="min-w-0 flex-1 rounded-full border border-line bg-card px-4 py-3 text-ink outline-none focus:border-accent"
               value={input}

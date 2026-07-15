@@ -9,7 +9,7 @@ import {
 } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Expense, HouseholdSettings, Income, Item, Payment, Snapshot, Transfer } from '../types'
-import { getDeviceOwner } from '../lib/device'
+import { getDeviceOwner, setSavedEmail } from '../lib/device'
 import {
   fetchRemoteConfig,
   getCloudConfig,
@@ -19,6 +19,7 @@ import {
   type AppMode,
   type CloudConfig,
 } from '../lib/config'
+import { logError } from '../lib/errors'
 import { EMPTY_SNAPSHOT, type DataAdapter } from './adapter'
 import { LocalAdapter, resetDemoData } from './localAdapter'
 import { getSupabase, SupabaseAdapter } from './supabaseAdapter'
@@ -90,7 +91,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!adapter) return
     try {
       setSnapshot(await adapter.load())
-    } catch {
+    } catch (e) {
+      logError('refetch', e)
       /* keep showing last known data; next mutation retries */
     }
   }, [])
@@ -199,7 +201,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setStatus('welcome')
     }
 
-    boot()
+    boot().catch((e) => {
+      logError('boot', e)
+      setStatus('welcome')
+    })
     return () => {
       cancelled = true
       unsubDataRef.current?.()
@@ -259,9 +264,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const sb = getSupabase(cfg)
       const { data, error } = await sb.auth.signInWithPassword({ email, password })
       if (error) return error.message
+      setSavedEmail(email)
       try {
         await startCloudAdapter(sb, data.session.user.id, data.session.user.email ?? null)
       } catch (e) {
+        logError('first-load', e)
         return loadErrorCode(e)
       }
       return null
@@ -276,10 +283,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const sb = getSupabase(cfg)
       const { data, error } = await sb.auth.signUp({ email, password })
       if (error) return error.message
+      setSavedEmail(email)
       if (!data.session) return 'confirm-email'
       try {
         await startCloudAdapter(sb, data.session.user.id, data.session.user.email ?? null)
       } catch (e) {
+        logError('first-load', e)
         return loadErrorCode(e)
       }
       return null
@@ -315,7 +324,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       .upsert({ user_id: userIdRef.current, lang }, { onConflict: 'user_id' })
       .select('token')
       .single()
-    if (error) return null
+    if (error) {
+      logError('calendar-feed', error)
+      return null
+    }
     return (data?.token as string | undefined) ?? null
   }, [])
 
@@ -346,7 +358,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     try {
       await persist(adapter)
       setSaveError(false)
-    } catch {
+    } catch (e) {
+      logError('save', e)
       setSaveError(true)
       try {
         setSnapshot(await adapter.load())
@@ -436,7 +449,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         await adapter.replaceAll(imported)
         await refetch()
         return true
-      } catch {
+      } catch (e) {
+        logError('import', e)
         await refetch()
         setSaveError(true)
         return false

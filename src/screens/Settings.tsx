@@ -5,6 +5,7 @@ import { useI18n, formatDay, type Lang } from '../lib/i18n'
 import { useTheme, type Theme } from '../lib/theme'
 import { formatMoney } from '../lib/money'
 import { buildRemindersIcs, icsEventCount, shareIcs } from '../lib/ics'
+import { clearErrorLog, errorReport, getErrorLog } from '../lib/errors'
 import { isItemFinished } from '../lib/schedule'
 import { Field, inputCls, Segmented } from '../components/ui'
 
@@ -31,6 +32,18 @@ export function Settings() {
   const [feedToken, setFeedToken] = useState<string | null | undefined>(undefined)
   const [copied, setCopied] = useState(false)
   const [deviceOwner, setDeviceOwnerState] = useState<'a' | 'b' | null>(getDeviceOwner)
+  const [errLog, setErrLog] = useState(getErrorLog)
+  const [reportCopied, setReportCopied] = useState(false)
+
+  const copyReport = async () => {
+    try {
+      await navigator.clipboard.writeText(errorReport())
+      setReportCopied(true)
+      setTimeout(() => setReportCopied(false), 2000)
+    } catch {
+      prompt('Report', errorReport())
+    }
+  }
 
   // Sync remote name changes in, but never while the user is mid-edit.
   useEffect(() => {
@@ -262,7 +275,11 @@ export function Settings() {
               <>
                 <p className="text-[13px] leading-relaxed text-ink2">{t('calendarFeedBody')}</p>
                 <button
-                  onClick={async () => setFeedToken(await enableCalendarFeed(lang))}
+                  onClick={async () => {
+                    const token = await enableCalendarFeed(lang)
+                    if (!token) alert(t('errFeedFailed'))
+                    setFeedToken(token)
+                  }}
                   className="press grad-accent w-full rounded-2xl py-3.5 text-[15px] font-bold text-white"
                 >
                   🔄 {t('calendarFeedEnable')}
@@ -311,6 +328,41 @@ export function Settings() {
         >
           📤 {t('calendarExportAll')}
         </button>
+      </section>
+
+      <section className="space-y-3 rounded-3xl border border-line bg-card p-5">
+        <p className="text-[13px] font-extrabold tracking-wide text-ink2 uppercase">🩺 {t('diagTitle')}</p>
+        <p className="text-[12px] leading-relaxed text-ink2">{t('diagHint')}</p>
+        {errLog.length === 0 ? (
+          <p className="text-[13px] font-semibold text-good">{t('diagEmpty')}</p>
+        ) : (
+          <>
+            <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl bg-card2 p-2.5">
+              {errLog.slice(0, 8).map((e, i) => (
+                <p key={i} className="num text-[11px] leading-snug text-ink2">
+                  <span className="font-bold text-ink">[{e.context}]</span> {e.message}
+                </p>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={copyReport}
+                className="press flex-1 rounded-2xl border border-line py-2.5 text-[13px] font-semibold text-ink"
+              >
+                {reportCopied ? `✓ ${t('diagCopied')}` : `📋 ${t('diagCopy')}`}
+              </button>
+              <button
+                onClick={() => {
+                  clearErrorLog()
+                  setErrLog([])
+                }}
+                className="press rounded-2xl border border-line px-4 py-2.5 text-[13px] font-semibold text-bad"
+              >
+                {t('diagClear')}
+              </button>
+            </div>
+          </>
+        )}
       </section>
 
       <p className="pb-2 text-center text-[12px] text-ink2">{t('about')}</p>

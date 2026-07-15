@@ -32,6 +32,15 @@ export function addMonthsClamped(iso: string, n: number): string {
   return toISO(new Date(ny, nm, Math.min(day, lastDay)))
 }
 
+// Whole months from the month of `from` through the month of `to`, inclusive.
+// Accepts 'YYYY-MM' or 'YYYY-MM-DD' on either side (days are ignored).
+// "1st instalment in July, last in October" -> 4.
+export function monthsInclusive(from: string, to: string): number {
+  const [fy, fm] = from.split('-').map(Number)
+  const [ty, tm] = to.split('-').map(Number)
+  return (ty - fy) * 12 + (tm - fm) + 1
+}
+
 export function daysBetween(fromISO: string, toISOStr: string): number {
   const ms = parseDate(toISOStr).getTime() - parseDate(fromISO).getTime()
   return Math.round(ms / 86_400_000)
