@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react'
 import type { Income, Item, Profile } from './types'
 import { useAppData } from './data/DataProvider'
 import { useI18n } from './lib/i18n'
+import type { AiMessage } from './lib/ai'
 import { TabBar, type Tab } from './components/TabBar'
 import { AddSheet } from './components/AddSheet'
 import { Home } from './screens/Home'
@@ -9,6 +10,7 @@ import { Items } from './screens/Items'
 import { IncomeScreen } from './screens/IncomeScreen'
 import { Settings } from './screens/Settings'
 import { Welcome } from './screens/Welcome'
+import { AiChat } from './screens/AiChat'
 
 const PROFILE_KEY = 'cc.profile'
 
@@ -47,7 +49,10 @@ function SaveErrorBanner() {
 }
 
 function Shell() {
+  const { mode } = useAppData()
   const [tab, setTab] = useState<Tab>('home')
+  const [aiOpen, setAiOpen] = useState(false)
+  const [aiMessages, setAiMessages] = useState<AiMessage[]>([])
   const [profile, setProfileState] = useState<Profile>(() => {
     const saved = localStorage.getItem(PROFILE_KEY)
     return saved === 'a' || saved === 'b' || saved === 'shared' ? saved : 'shared'
@@ -83,7 +88,14 @@ function Shell() {
     <div className="min-h-dvh">
       <main className="mx-auto max-w-lg px-4 pt-[max(env(safe-area-inset-top),12px)] pb-36 min-[430px]:px-5">
         <div key={tab} className="anim-screen">
-          {tab === 'home' && <Home profile={profile} onProfile={setProfile} onEditItem={openEditItem} />}
+          {tab === 'home' && (
+            <Home
+              profile={profile}
+              onProfile={setProfile}
+              onEditItem={openEditItem}
+              onOpenAi={mode === 'cloud' ? () => setAiOpen(true) : undefined}
+            />
+          )}
           {tab === 'items' && <Items profile={profile} onProfile={setProfile} onEditItem={openEditItem} />}
           {tab === 'income' && (
             <IncomeScreen profile={profile} onProfile={setProfile} onEditIncome={openEditIncome} />
@@ -102,6 +114,8 @@ function Shell() {
         editIncome={editIncome}
         defaultOwner={profile}
       />
+
+      <AiChat open={aiOpen} onClose={() => setAiOpen(false)} messages={aiMessages} setMessages={setAiMessages} />
     </div>
   )
 }

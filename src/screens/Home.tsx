@@ -15,10 +15,12 @@ export function Home({
   profile,
   onProfile,
   onEditItem,
+  onOpenAi,
 }: {
   profile: Profile
   onProfile: (p: Profile) => void
   onEditItem: (item: Item) => void
+  onOpenAi?: () => void
 }) {
   const { snapshot, mode } = useAppData()
   const { t, locale } = useI18n()
@@ -88,11 +90,25 @@ export function Home({
 
   return (
     <div className="space-y-5">
-      <header className="pt-2">
-        <p className="text-sm font-medium text-ink2">
-          {greeting} {mode === 'demo' && <span className="ml-1 rounded-full bg-card2 px-2 py-0.5 text-[11px] font-bold">local</span>}
-        </p>
-        <h1 className="text-2xl font-extrabold tracking-tight text-ink">{profileName}</h1>
+      <header className="flex items-end justify-between pt-2">
+        <div>
+          <p className="text-sm font-medium text-ink2">
+            {greeting}{' '}
+            {mode === 'demo' && (
+              <span className="ml-1 rounded-full bg-card2 px-2 py-0.5 text-[11px] font-bold">local</span>
+            )}
+          </p>
+          <h1 className="text-2xl font-extrabold tracking-tight text-ink">{profileName}</h1>
+        </div>
+        {onOpenAi && (
+          <button
+            onClick={onOpenAi}
+            aria-label={t('aiTitle')}
+            className="press grad-accent flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-xl text-white shadow-md"
+          >
+            ✨
+          </button>
+        )}
       </header>
 
       <ProfileSwitcher profile={profile} onChange={onProfile} />

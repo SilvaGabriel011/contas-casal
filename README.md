@@ -44,6 +44,24 @@ Para pular a tela de colar URL/chave, defina as variáveis de ambiente no Vercel
 
 A anon key é pública por design — a segurança vem das políticas de RLS criadas pelo `schema.sql`.
 
+## 🤖 Assistente de IA (opcional)
+
+O botão ✨ na tela inicial abre um assistente que conhece as contas de vocês: relatórios do mês,
+comparações, preparação de números pro tax return (ano fiscal australiano, jul–jun) e análise de
+extratos CSV do banco (anexe o export do CommBank direto no chat).
+
+Para ativar, adicione no Vercel (*Project Settings → Environment Variables*):
+
+| Nome | Valor |
+| --- | --- |
+| `OPENAI_API_KEY` | sua chave em [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| `OPENAI_MODEL` | opcional — padrão `gpt-4o-mini` |
+
+Como funciona a segurança: a chave **nunca vai ao navegador** (sem prefixo `VITE_`) — quem chama a
+OpenAI é a função serverless em `api/ai.ts`, que antes **valida o token de login do Supabase**.
+Sem estar logado na conta do casal, o endpoint recusa a chamada, então ninguém consome seus créditos.
+Os dados enviados ao modelo são um resumo do snapshot local (itens, rendas e pagamentos recentes).
+
 ## 🚀 Publicação (Vercel)
 
 1. Entre em [vercel.com](https://vercel.com) com a conta do GitHub e clique em **Add New → Project**.

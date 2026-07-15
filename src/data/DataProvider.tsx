@@ -30,6 +30,7 @@ interface AppData {
   signUp: (email: string, password: string) => Promise<'confirm-email' | string | null>
   signOut: () => Promise<void>
   backToWelcome: () => void
+  getAccessToken: () => Promise<string | null>
   upsertItem: (item: Item) => Promise<void>
   deleteItem: (id: string) => Promise<void>
   upsertIncome: (income: Income) => Promise<void>
@@ -251,6 +252,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     handleSignedOut()
   }, [handleSignedOut])
 
+  const getAccessToken = useCallback(async () => {
+    const cfg = getCloudConfig()
+    if (!cfg) return null
+    const { data } = await getSupabase(cfg).auth.getSession()
+    return data.session?.access_token ?? null
+  }, [])
+
   const backToWelcome = useCallback(() => {
     teardownCloud()
     setMode(null)
@@ -349,6 +357,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     signUp,
     signOut,
     backToWelcome,
+    getAccessToken,
     upsertItem,
     deleteItem,
     upsertIncome,
