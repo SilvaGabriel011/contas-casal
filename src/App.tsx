@@ -12,6 +12,7 @@ import { Items } from './screens/Items'
 import { IncomeScreen } from './screens/IncomeScreen'
 import { More, type MenuEntry } from './screens/More'
 import { ExpensesScreen } from './screens/ExpensesScreen'
+import { HistoryScreen } from './screens/HistoryScreen'
 import { SettleScreen } from './screens/SettleScreen'
 import { TransfersScreen } from './screens/TransfersScreen'
 import { ReportsScreen } from './screens/ReportsScreen'
@@ -19,6 +20,27 @@ import { Welcome } from './screens/Welcome'
 import { AiChat } from './screens/AiChat'
 
 const PROFILE_KEY = 'cc.profile'
+
+// AI chat survives closing the app; capped so CSV attachments in old
+// messages can't blow the storage quota.
+const AI_CHAT_KEY = 'cc.aichat.v1'
+const AI_CHAT_MAX_MESSAGES = 40
+
+function loadAiChat(): AiMessage[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(AI_CHAT_KEY) ?? '[]')
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (m): m is AiMessage =>
+        typeof m === 'object' &&
+        m !== null &&
+        ((m as AiMessage).role === 'user' || (m as AiMessage).role === 'assistant') &&
+        typeof (m as AiMessage).content === 'string'
+    )
+  } catch {
+    return []
+  }
+}
 
 export default function App() {
   const { status } = useAppData()
@@ -77,7 +99,20 @@ function Shell() {
   const [tab, setTab] = useState<Tab>('home')
   useAppBadge()
   const [aiOpen, setAiOpen] = useState(false)
-  const [aiMessages, setAiMessages] = useState<AiMessage[]>([])
+  const [aiMessages, setAiMessages] = useState<AiMessage[]>(loadAiChat)
+
+  useEffect(() => {
+    // Debounced: streaming updates the last message on every chunk.
+    const id = setTimeout(() => {
+      try {
+        if (aiMessages.length === 0) localStorage.removeItem(AI_CHAT_KEY)
+        else localStorage.setItem(AI_CHAT_KEY, JSON.stringify(aiMessages.slice(-AI_CHAT_MAX_MESSAGES)))
+      } catch {
+        /* storage full or blocked — the chat just won't persist */
+      }
+    }, 400)
+    return () => clearTimeout(id)
+  }, [aiMessages])
   const [profile, setProfileState] = useState<Profile>(() => {
     const saved = localStorage.getItem(PROFILE_KEY)
     return saved === 'a' || saved === 'b' || saved === 'shared' ? saved : 'shared'
@@ -127,6 +162,13 @@ function Shell() {
       labelKey: 'menuExpenses',
       hintKey: 'menuExpensesHint',
       render: () => <ExpensesScreen onEditExpense={openEditExpense} />,
+    },
+    {
+      view: 'history',
+      emoji: '🗓️',
+      labelKey: 'menuHistory',
+      hintKey: 'menuHistoryHint',
+      render: () => <HistoryScreen />,
     },
     {
       view: 'settle',

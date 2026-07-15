@@ -5,6 +5,7 @@ import { Settings } from './Settings'
 export type MoreView =
   | 'menu'
   | 'expenses'
+  | 'history'
   | 'settle'
   | 'transfers'
   | 'tax'

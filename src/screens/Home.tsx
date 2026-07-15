@@ -6,6 +6,8 @@ import { formatMoneyShort } from '../lib/money'
 import { addDays, daysBetween, endOfMonth, startOfMonth, todayISO } from '../lib/dates'
 import { buildOccurrences, monthlyEquivalent, nextPayday, visibleToProfile } from '../lib/schedule'
 import { expensesFor, monthOf, totalsByCurrency } from '../lib/expenses'
+import { budgetAlerts, categoryAlerts } from '../lib/insights'
+import { categoryLabel } from '../lib/categories'
 import { personName } from '../lib/owners'
 import { ProfileSwitcher } from '../components/ProfileSwitcher'
 import { SummaryCard } from '../components/SummaryCard'
@@ -68,6 +70,20 @@ export function Home({
       .reduce((s, i) => s + monthlyEquivalent(i.amount, i.frequency), 0)
     return { currency, totalMonth, paidMonth, incomeMonth, expensesMonth: monthExpenses[currency] ?? 0 }
   })
+
+  // Consumption radar: budget overruns first, then categories running well
+  // above the couple's own 3-month normal. Two nudges max — it's a heads-up,
+  // not a scolding.
+  const radar = useMemo(() => {
+    const m = monthOf(today)
+    const budget = budgetAlerts(snapshot.expenses, m, snapshot.settings.budgets)
+    const covered = new Set(budget.map((b) => `${b.category}|${b.currency}`))
+    const trend = categoryAlerts(snapshot.expenses, m).filter((a) => !covered.has(`${a.category}|${a.currency}`))
+    return [
+      ...budget.map((b) => ({ kind: 'budget' as const, ...b })),
+      ...trend.map((a) => ({ kind: 'trend' as const, ...a })),
+    ].slice(0, 2)
+  }, [snapshot.expenses, snapshot.settings, today])
 
   const payday = nextPayday(incomes, today)
   const overdue = listOccs.filter((o) => !o.payment && o.dueDate < today)
@@ -138,6 +154,31 @@ export function Home({
               </div>
             ))}
           </div>
+
+          {radar.length > 0 && (
+            <section className="space-y-2">
+              {radar.map((a) => (
+                <div
+                  key={`${a.kind}-${a.category}-${a.currency}`}
+                  className="anim-rise flex items-center gap-3 rounded-2xl border border-bad/30 bg-bad/5 px-4 py-3"
+                >
+                  <span className="text-2xl">{a.kind === 'budget' ? '🎯' : '📈'}</span>
+                  <p className="min-w-0 flex-1 text-[13px] leading-snug font-bold text-ink">
+                    {a.kind === 'budget'
+                      ? t('alertOverBudget', {
+                          cat: categoryLabel(a.category, snapshot.settings, t),
+                          spent: formatMoneyShort(a.spent, a.currency, locale),
+                          budget: formatMoneyShort(a.budget, a.currency, locale),
+                        })
+                      : t('alertOverTypical', {
+                          cat: categoryLabel(a.category, snapshot.settings, t),
+                          pct: a.pct,
+                        })}
+                  </p>
+                </div>
+              ))}
+            </section>
+          )}
 
           {payday && (
             <div className="anim-rise flex items-center gap-3 rounded-2xl border border-line bg-card px-4 py-3">
