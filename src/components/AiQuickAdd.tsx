@@ -9,6 +9,7 @@ import { KIND_CONFIG } from '../lib/kinds'
 import { getDeviceOwner } from '../lib/device'
 import { todayISO } from '../lib/dates'
 import { parseQuickAdd, type QuickDraft } from '../lib/ai'
+import { logError } from '../lib/errors'
 import { inputCls } from './ui'
 
 const TYPE_EMOJI: Record<QuickDraft['type'], string> = {
@@ -52,6 +53,7 @@ export function AiQuickAdd({ onDone }: { onDone: () => void }) {
       if (result.length === 0) setError(t('aiQuickNone'))
       else setDrafts(result)
     } catch (e) {
+      logError('ai-parse', e)
       const code = (e as Error).message
       setError(
         code === 'missing-openai-key'

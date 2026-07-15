@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAppData } from '../data/DataProvider'
 import { useI18n } from '../lib/i18n'
 import { fetchRemoteConfig, getCloudConfig, hasBakedCloudConfig, SUPABASE_URL_RE } from '../lib/config'
+import { authErrorKey, logError } from '../lib/errors'
 import { derivePinPassword, isValidPin } from '../lib/pin'
 import { Field, inputCls, Segmented } from '../components/ui'
 import { PinInput } from '../components/PinInput'
@@ -64,9 +65,18 @@ export function Welcome() {
       if (result === 'confirm-email') setMessage({ kind: 'info', text: t('signUpDone') })
       else if (result === 'missing-config') setMessage({ kind: 'error', text: t('missingConfig') })
       else if (result === 'missing-schema') setMessage({ kind: 'error', text: t('missingSchema') })
-      else if (result) setMessage({ kind: 'error', text: t('authErrorGeneric', { msg: result }) })
+      else if (result) {
+        logError(`auth-${mode}`, result)
+        const key = authErrorKey(result)
+        setMessage({ kind: 'error', text: key ? t(key) : t('authErrorGeneric', { msg: result }) })
+      }
     } catch (e) {
-      setMessage({ kind: 'error', text: t('authErrorGeneric', { msg: (e as Error).message ?? '?' }) })
+      logError(`auth-${mode}`, e)
+      const key = authErrorKey((e as Error).message ?? '')
+      setMessage({
+        kind: 'error',
+        text: key ? t(key) : t('authErrorGeneric', { msg: (e as Error).message ?? '?' }),
+      })
     } finally {
       setBusy(false)
     }

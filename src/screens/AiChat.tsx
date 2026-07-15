@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 
 import { useAppData } from '../data/DataProvider'
 import { useI18n, type TKey } from '../lib/i18n'
 import { buildAiContext, streamAiChat, type AiMessage } from '../lib/ai'
+import { logError } from '../lib/errors'
 
 const CSV_MARKER = '\n\n[CSV]'
 const MAX_CSV_CHARS = 20_000
@@ -69,6 +70,7 @@ export function AiChat({
       }
       if (!acc.trim()) throw new Error('generic')
     } catch (e) {
+      logError('ai-chat', e)
       setMessages(history)
       setError(t(ERROR_KEY[(e as Error).message] ?? 'aiErrorGeneric'))
     } finally {
