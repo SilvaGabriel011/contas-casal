@@ -17,6 +17,7 @@ import { categoryLabel } from '../lib/categories'
 import { ownerLabel, personName } from '../lib/owners'
 import { SummaryCard } from '../components/SummaryCard'
 import { OccurrenceRow } from '../components/OccurrenceRow'
+import { VaultNudge } from '../components/VaultNudge'
 import { EmptyState } from '../components/ui'
 
 const AGENDA_DAYS = 30
@@ -307,6 +308,8 @@ export function Home({
               )
             })}
           </div>
+
+          <VaultNudge />
 
           {radar.length > 0 && (
             <section className="space-y-2">

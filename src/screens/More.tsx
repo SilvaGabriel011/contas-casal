@@ -13,6 +13,7 @@ export type MoreView =
   | 'reconcile'
   | 'goals'
   | 'wrapped'
+  | 'vault'
   | 'settings'
 
 interface MenuEntry {
