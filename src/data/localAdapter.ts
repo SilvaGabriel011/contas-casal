@@ -1,4 +1,4 @@
-import type { HouseholdSettings, Income, Item, Payment, Snapshot } from '../types'
+import type { Expense, HouseholdSettings, Income, Item, Payment, Snapshot } from '../types'
 import { DEFAULT_SETTINGS, EMPTY_SNAPSHOT, type DataAdapter } from './adapter'
 import * as reduce from './reducers'
 
@@ -14,6 +14,7 @@ function read(): Snapshot {
         items: s.items ?? [],
         incomes: s.incomes ?? [],
         payments: s.payments ?? [],
+        expenses: s.expenses ?? [],
         settings: { ...DEFAULT_SETTINGS, ...s.settings },
       }
     }
@@ -70,6 +71,16 @@ export class LocalAdapter implements DataAdapter {
 
   async removePayment(itemId: string, dueDate: string) {
     this.snap = reduce.removePayment(this.snap, itemId, dueDate)
+    this.commit()
+  }
+
+  async upsertExpense(expense: Expense) {
+    this.snap = reduce.upsertExpense(this.snap, expense)
+    this.commit()
+  }
+
+  async deleteExpense(id: string) {
+    this.snap = reduce.deleteExpense(this.snap, id)
     this.commit()
   }
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { Income, Item, Profile } from './types'
+import type { Expense, Income, Item, Profile } from './types'
 import { useAppData } from './data/DataProvider'
 import { useI18n } from './lib/i18n'
 import type { AiMessage } from './lib/ai'
@@ -10,7 +10,8 @@ import { AddSheet } from './components/AddSheet'
 import { Home } from './screens/Home'
 import { Items } from './screens/Items'
 import { IncomeScreen } from './screens/IncomeScreen'
-import { More } from './screens/More'
+import { More, type MenuEntry } from './screens/More'
+import { ExpensesScreen } from './screens/ExpensesScreen'
 import { Welcome } from './screens/Welcome'
 import { AiChat } from './screens/AiChat'
 
@@ -81,6 +82,7 @@ function Shell() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editItem, setEditItem] = useState<Item | null>(null)
   const [editIncome, setEditIncome] = useState<Income | null>(null)
+  const [editExpense, setEditExpense] = useState<Expense | null>(null)
 
   const setProfile = useCallback((p: Profile) => {
     localStorage.setItem(PROFILE_KEY, p)
@@ -90,20 +92,40 @@ function Shell() {
   const openAdd = useCallback(() => {
     setEditItem(null)
     setEditIncome(null)
+    setEditExpense(null)
     setSheetOpen(true)
   }, [])
 
   const openEditItem = useCallback((item: Item) => {
     setEditItem(item)
     setEditIncome(null)
+    setEditExpense(null)
     setSheetOpen(true)
   }, [])
 
   const openEditIncome = useCallback((income: Income) => {
     setEditIncome(income)
     setEditItem(null)
+    setEditExpense(null)
     setSheetOpen(true)
   }, [])
+
+  const openEditExpense = useCallback((expense: Expense) => {
+    setEditExpense(expense)
+    setEditItem(null)
+    setEditIncome(null)
+    setSheetOpen(true)
+  }, [])
+
+  const moreEntries: MenuEntry[] = [
+    {
+      view: 'expenses',
+      emoji: '☕',
+      labelKey: 'menuExpenses',
+      hintKey: 'menuExpensesHint',
+      render: () => <ExpensesScreen onEditExpense={openEditExpense} />,
+    },
+  ]
 
   return (
     <div className="min-h-dvh">
@@ -121,7 +143,7 @@ function Shell() {
           {tab === 'income' && (
             <IncomeScreen profile={profile} onProfile={setProfile} onEditIncome={openEditIncome} />
           )}
-          {tab === 'more' && <More />}
+          {tab === 'more' && <More extraEntries={moreEntries} />}
         </div>
       </main>
 
@@ -133,6 +155,7 @@ function Shell() {
         onClose={() => setSheetOpen(false)}
         editItem={editItem}
         editIncome={editIncome}
+        editExpense={editExpense}
         defaultOwner={profile}
       />
 

@@ -1,4 +1,4 @@
-import type { HouseholdSettings, Income, Item, Payment, Snapshot } from '../types'
+import type { Expense, HouseholdSettings, Income, Item, Payment, Snapshot } from '../types'
 
 export interface DataAdapter {
   load(): Promise<Snapshot>
@@ -8,6 +8,8 @@ export interface DataAdapter {
   deleteIncome(id: string): Promise<void>
   addPayment(payment: Payment): Promise<void>
   removePayment(itemId: string, dueDate: string): Promise<void>
+  upsertExpense(expense: Expense): Promise<void>
+  deleteExpense(id: string): Promise<void>
   saveSettings(settings: HouseholdSettings): Promise<void>
   // Full restore: replaces every row with the imported snapshot's contents.
   replaceAll(snapshot: Snapshot): Promise<void>
@@ -25,5 +27,6 @@ export const EMPTY_SNAPSHOT: Snapshot = {
   items: [],
   incomes: [],
   payments: [],
+  expenses: [],
   settings: DEFAULT_SETTINGS,
 }

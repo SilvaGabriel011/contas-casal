@@ -80,6 +80,34 @@ drop policy if exists "own settings" on public.app_settings;
 create policy "own settings" on public.app_settings
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+-- Gastos variáveis do dia a dia (mercado, delivery, transporte…).
+create table if not exists public.expenses (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  date date not null,
+  amount numeric(12, 2) not null check (amount >= 0),
+  currency text not null check (currency in ('AUD', 'BRL')),
+  category text not null default 'other',
+  owner text not null check (owner in ('a', 'b', 'shared')),
+  paid_by text check (paid_by in ('a', 'b')),
+  note text,
+  created_at timestamptz not null default now()
+);
+
+alter table public.expenses enable row level security;
+drop policy if exists "own expenses" on public.expenses;
+create policy "own expenses" on public.expenses
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+do $$
+begin
+  alter publication supabase_realtime add table public.expenses;
+exception when duplicate_object then null;
+end $$;
+
+-- Acerto do casal: quem efetivamente pagou cada conta.
+alter table public.payments add column if not exists paid_by text check (paid_by in ('a', 'b'));
+
 -- Calendário sincronizado (Apple/Google): o app cria um token secreto e o
 -- endpoint /api/calendar serve um feed .ics com os lembretes de vencimento.
 create table if not exists public.calendar_feeds (

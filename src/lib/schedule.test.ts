@@ -52,6 +52,7 @@ const payment = (itemId: string, dueDate: string, amount = 100): Payment => ({
   dueDate,
   paidAt: '2026-07-01T00:00:00Z',
   amount,
+  paidBy: null,
 })
 
 describe('occurrenceDates — weekly/fortnightly', () => {
