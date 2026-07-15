@@ -14,10 +14,18 @@ const fmtDate = (iso: string) => iso.replaceAll('-', '')
 const escapeText = (s: string) =>
   s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n')
 
+export interface IcsOptions {
+  // Skip specific occurrences (e.g. already-paid future due dates in the feed).
+  skip?: (item: Item, dueDate: string) => boolean
+  // Marks the output as a subscribable feed with a display name + refresh hints.
+  feedName?: string
+}
+
 export function buildRemindersIcs(
   items: Item[],
   titleFor: (item: Item, dueDate: string) => string,
-  bodyFor: (item: Item, dueDate: string) => string
+  bodyFor: (item: Item, dueDate: string) => string,
+  opts: IcsOptions = {}
 ): string {
   const today = todayISO()
   const dtstamp = `${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`
@@ -26,6 +34,7 @@ export function buildRemindersIcs(
   for (const item of items) {
     const occs = occurrenceDates(item, today, addDays(today, HORIZON_DAYS)).slice(0, MAX_EVENTS_PER_ITEM)
     for (const { date } of occs) {
+      if (opts.skip?.(item, date)) continue
       const title = escapeText(titleFor(item, date))
       events.push(
         [
@@ -46,11 +55,20 @@ export function buildRemindersIcs(
     }
   }
 
+  const feedHeaders = opts.feedName
+    ? [
+        `X-WR-CALNAME:${escapeText(opts.feedName)}`,
+        'REFRESH-INTERVAL;VALUE=DURATION:PT6H',
+        'X-PUBLISHED-TTL:PT6H',
+      ]
+    : []
+
   return [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'PRODID:-//Contas do Casal//PT',
     'CALSCALE:GREGORIAN',
+    ...feedHeaders,
     ...events,
     'END:VCALENDAR',
   ].join('\r\n')

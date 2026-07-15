@@ -62,6 +62,21 @@ OpenAI é a função serverless em `api/ai.ts`, que antes **valida o token de lo
 Sem estar logado na conta do casal, o endpoint recusa a chamada, então ninguém consome seus créditos.
 Os dados enviados ao modelo são um resumo do snapshot local (itens, rendas e pagamentos recentes).
 
+## 📅 Calendário (Apple e Google)
+
+Em **Ajustes → Calendário → Ativar calendário sincronizado**, o app cria um link secreto de feed
+(`/api/calendar?t=…`) e mostra botões de um toque:
+
+- **iPhone**: "Adicionar no Calendário do iPhone" abre a assinatura nativa (webcal). Os lembretes
+  "💸 Pagar X amanhã — valor" aparecem no dia anterior a cada vencimento, com alerta às 9h, e se
+  **atualizam sozinhos** quando as contas mudam no app.
+- **Google Calendar**: "Adicionar no Google Calendar" abre o Google já com o feed preenchido
+  (o Google atualiza feeds externos a cada ~12h).
+
+O link é uma *capability URL*: só quem tem o token vê os lembretes (nunca os valores completos da
+conta — só nome/valor/vencimento dos eventos), e dá pra revogar a qualquer momento em Ajustes.
+Também existe o export manual `.ics` (por conta ou tudo de uma vez) que funciona até no modo local.
+
 ## 🚀 Publicação (Vercel)
 
 1. Entre em [vercel.com](https://vercel.com) com a conta do GitHub e clique em **Add New → Project**.

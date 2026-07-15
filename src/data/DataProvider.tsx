@@ -31,6 +31,9 @@ interface AppData {
   signOut: () => Promise<void>
   backToWelcome: () => void
   getAccessToken: () => Promise<string | null>
+  getCalendarFeed: () => Promise<string | null>
+  enableCalendarFeed: (lang: string) => Promise<string | null>
+  disableCalendarFeed: () => Promise<void>
   upsertItem: (item: Item) => Promise<void>
   deleteItem: (id: string) => Promise<void>
   upsertIncome: (income: Income) => Promise<void>
@@ -259,6 +262,31 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return data.session?.access_token ?? null
   }, [])
 
+  const getCalendarFeed = useCallback(async (): Promise<string | null> => {
+    const cfg = getCloudConfig()
+    if (!cfg || !userIdRef.current) return null
+    const { data } = await getSupabase(cfg).from('calendar_feeds').select('token').maybeSingle()
+    return (data?.token as string | undefined) ?? null
+  }, [])
+
+  const enableCalendarFeed = useCallback(async (lang: string): Promise<string | null> => {
+    const cfg = getCloudConfig()
+    if (!cfg || !userIdRef.current) return null
+    const { data, error } = await getSupabase(cfg)
+      .from('calendar_feeds')
+      .upsert({ user_id: userIdRef.current, lang }, { onConflict: 'user_id' })
+      .select('token')
+      .single()
+    if (error) return null
+    return (data?.token as string | undefined) ?? null
+  }, [])
+
+  const disableCalendarFeed = useCallback(async () => {
+    const cfg = getCloudConfig()
+    if (!cfg || !userIdRef.current) return
+    await getSupabase(cfg).from('calendar_feeds').delete().eq('user_id', userIdRef.current)
+  }, [])
+
   const backToWelcome = useCallback(() => {
     teardownCloud()
     setMode(null)
@@ -358,6 +386,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     signOut,
     backToWelcome,
     getAccessToken,
+    getCalendarFeed,
+    enableCalendarFeed,
+    disableCalendarFeed,
     upsertItem,
     deleteItem,
     upsertIncome,

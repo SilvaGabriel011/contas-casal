@@ -8,13 +8,26 @@ import { isItemFinished } from '../lib/schedule'
 import { Field, inputCls, Segmented } from '../components/ui'
 
 export function Settings() {
-  const { snapshot, saveSettings, mode, userEmail, signOut, backToWelcome, resetDemo } = useAppData()
+  const {
+    snapshot,
+    saveSettings,
+    mode,
+    userEmail,
+    signOut,
+    backToWelcome,
+    resetDemo,
+    getCalendarFeed,
+    enableCalendarFeed,
+    disableCalendarFeed,
+  } = useAppData()
   const { t, lang, locale, setLang } = useI18n()
   const { theme, setTheme } = useTheme()
 
   const [nameA, setNameA] = useState(snapshot.settings.nameA)
   const [nameB, setNameB] = useState(snapshot.settings.nameB)
   const [dirty, setDirty] = useState(false)
+  const [feedToken, setFeedToken] = useState<string | null | undefined>(undefined)
+  const [copied, setCopied] = useState(false)
 
   // Sync remote name changes in, but never while the user is mid-edit.
   useEffect(() => {
@@ -40,6 +53,25 @@ export function Settings() {
     a.download = 'contas-casal.json'
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  useEffect(() => {
+    if (mode === 'cloud') getCalendarFeed().then(setFeedToken)
+    else setFeedToken(null)
+  }, [mode, getCalendarFeed])
+
+  const feedUrl = feedToken ? `${location.origin}/api/calendar?t=${feedToken}` : null
+  const webcalUrl = feedUrl ? feedUrl.replace(/^https?:/, 'webcal:') : null
+
+  const copyFeed = async () => {
+    if (!feedUrl) return
+    try {
+      await navigator.clipboard.writeText(feedUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      prompt('URL', feedUrl)
+    }
   }
 
   const exportCalendar = () => {
@@ -157,12 +189,67 @@ export function Settings() {
         >
           📤 {t('exportData')}
         </button>
+      </section>
+
+      <section className="space-y-3 rounded-3xl border border-line bg-card p-5">
+        <p className="text-[13px] font-extrabold tracking-wide text-ink2 uppercase">
+          📅 {t('calendarSection')}
+        </p>
+
+        {mode === 'cloud' && feedToken !== undefined && (
+          <>
+            {!feedToken ? (
+              <>
+                <p className="text-[13px] leading-relaxed text-ink2">{t('calendarFeedBody')}</p>
+                <button
+                  onClick={async () => setFeedToken(await enableCalendarFeed(lang))}
+                  className="press grad-accent w-full rounded-2xl py-3.5 text-[15px] font-bold text-white"
+                >
+                  🔄 {t('calendarFeedEnable')}
+                </button>
+              </>
+            ) : (
+              <>
+                <a
+                  href={webcalUrl ?? '#'}
+                  className="press block w-full rounded-2xl border border-line bg-card2 py-3 text-center text-[14px] font-semibold text-ink"
+                >
+                  🍎 {t('calendarFeedApple')}
+                </a>
+                <a
+                  href={`https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcalUrl ?? '')}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="press block w-full rounded-2xl border border-line bg-card2 py-3 text-center text-[14px] font-semibold text-ink"
+                >
+                  🗓️ {t('calendarFeedGoogle')}
+                </a>
+                <button
+                  onClick={copyFeed}
+                  className="press w-full rounded-2xl border border-line py-3 text-[14px] font-semibold text-ink"
+                >
+                  {copied ? `✓ ${t('calendarFeedCopied')}` : `🔗 ${t('calendarFeedCopy')}`}
+                </button>
+                <p className="text-[12px] leading-relaxed text-ink2">{t('calendarFeedHint')}</p>
+                <button
+                  onClick={async () => {
+                    await disableCalendarFeed()
+                    setFeedToken(null)
+                  }}
+                  className="press w-full rounded-2xl border border-line py-2.5 text-[13px] font-semibold text-bad"
+                >
+                  {t('calendarFeedDisable')}
+                </button>
+              </>
+            )}
+          </>
+        )}
 
         <button
           onClick={exportCalendar}
           className="press w-full rounded-2xl border border-line py-3 text-[14px] font-semibold text-ink"
         >
-          📅 {t('calendarExportAll')}
+          📤 {t('calendarExportAll')}
         </button>
       </section>
 

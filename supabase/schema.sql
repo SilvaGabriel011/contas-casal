@@ -80,6 +80,60 @@ drop policy if exists "own settings" on public.app_settings;
 create policy "own settings" on public.app_settings
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+-- Calendário sincronizado (Apple/Google): o app cria um token secreto e o
+-- endpoint /api/calendar serve um feed .ics com os lembretes de vencimento.
+create table if not exists public.calendar_feeds (
+  token uuid primary key default gen_random_uuid(),
+  user_id uuid not null unique references auth.users (id) on delete cascade,
+  lang text not null default 'pt' check (lang in ('pt', 'en')),
+  created_at timestamptz not null default now()
+);
+
+alter table public.calendar_feeds enable row level security;
+drop policy if exists "own feed" on public.calendar_feeds;
+create policy "own feed" on public.calendar_feeds
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Lida pelo feed usando apenas o token (capability URL): security definer
+-- valida o token e devolve só os dados necessários para montar lembretes.
+create or replace function public.calendar_feed_data(feed_token uuid)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'lang', f.lang,
+    'items', coalesce(
+      (
+        select jsonb_agg(jsonb_build_object(
+          'id', i.id,
+          'name', i.name,
+          'kind', i.kind,
+          'amount', i.amount,
+          'currency', i.currency,
+          'frequency', i.frequency,
+          'startDate', i.start_date,
+          'installmentsTotal', i.installments_total,
+          'paidDates', coalesce(
+            (select jsonb_agg(p.due_date) from public.payments p where p.item_id = i.id),
+            '[]'::jsonb
+          )
+        ))
+        from public.items i
+        where i.user_id = f.user_id and not i.archived
+      ),
+      '[]'::jsonb
+    )
+  )
+  from public.calendar_feeds f
+  where f.token = feed_token
+$$;
+
+revoke all on function public.calendar_feed_data(uuid) from public;
+grant execute on function public.calendar_feed_data(uuid) to anon, authenticated;
+
 -- Realtime: os dois celulares atualizam na hora.
 do $$
 begin
