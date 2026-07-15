@@ -24,5 +24,6 @@
     }
   ],
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }],
-  "crons": [{ "path": "/api/notify", "schedule": "0 8 * * *" }]
+  "crons": [{ "path": "/api/notify", "schedule": "0 8 * * *" }],
+  "regions": ["syd1"]
 }
