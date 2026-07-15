@@ -11,3 +11,20 @@ export function setDeviceOwner(owner: 'a' | 'b' | null) {
   if (owner) localStorage.setItem(KEY, owner)
   else localStorage.removeItem(KEY)
 }
+
+// Email is identity, not a secret: remember it per device after the first
+// successful sign-in so future logins are PIN-only.
+const EMAIL_KEY = 'cc.last-email'
+
+export function getSavedEmail(): string | null {
+  const v = localStorage.getItem(EMAIL_KEY)
+  return v && v.includes('@') ? v : null
+}
+
+export function setSavedEmail(email: string) {
+  localStorage.setItem(EMAIL_KEY, email.trim().toLowerCase())
+}
+
+export function clearSavedEmail() {
+  localStorage.removeItem(EMAIL_KEY)
+}

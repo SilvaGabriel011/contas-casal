@@ -9,7 +9,7 @@ import {
 } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Expense, HouseholdSettings, Income, Item, Payment, Snapshot, Transfer } from '../types'
-import { getDeviceOwner } from '../lib/device'
+import { getDeviceOwner, setSavedEmail } from '../lib/device'
 import {
   fetchRemoteConfig,
   getCloudConfig,
@@ -264,6 +264,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const sb = getSupabase(cfg)
       const { data, error } = await sb.auth.signInWithPassword({ email, password })
       if (error) return error.message
+      setSavedEmail(email)
       try {
         await startCloudAdapter(sb, data.session.user.id, data.session.user.email ?? null)
       } catch (e) {
@@ -282,6 +283,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const sb = getSupabase(cfg)
       const { data, error } = await sb.auth.signUp({ email, password })
       if (error) return error.message
+      setSavedEmail(email)
       if (!data.session) return 'confirm-email'
       try {
         await startCloudAdapter(sb, data.session.user.id, data.session.user.email ?? null)

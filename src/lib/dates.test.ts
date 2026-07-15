@@ -4,6 +4,7 @@ import {
   addMonthsClamped,
   daysBetween,
   endOfMonth,
+  monthsInclusive,
   parseDate,
   startOfMonth,
   toISO,
@@ -73,6 +74,24 @@ describe('daysBetween', () => {
     expect(daysBetween('2026-01-01', '2026-12-31')).toBe(364)
     expect(daysBetween('2026-04-01', '2026-04-06')).toBe(5)
     expect(daysBetween('2026-10-01', '2026-10-05')).toBe(4)
+  })
+})
+
+describe('monthsInclusive', () => {
+  it('counts instalments from first month through last month', () => {
+    expect(monthsInclusive('2026-07-15', '2026-10')).toBe(4)
+    expect(monthsInclusive('2026-07-15', '2026-07')).toBe(1)
+    expect(monthsInclusive('2026-07', '2026-10')).toBe(4)
+  })
+
+  it('crosses year boundaries', () => {
+    expect(monthsInclusive('2026-11-05', '2027-02')).toBe(4)
+    expect(monthsInclusive('2026-01-01', '2027-01')).toBe(13)
+  })
+
+  it('goes non-positive when the end month is before the start', () => {
+    expect(monthsInclusive('2026-10-01', '2026-09')).toBe(0)
+    expect(monthsInclusive('2026-10-01', '2026-07')).toBe(-2)
   })
 })
 

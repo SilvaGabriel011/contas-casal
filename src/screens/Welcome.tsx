@@ -3,6 +3,7 @@ import { useAppData } from '../data/DataProvider'
 import { useI18n } from '../lib/i18n'
 import { fetchRemoteConfig, getCloudConfig, hasBakedCloudConfig, SUPABASE_URL_RE } from '../lib/config'
 import { authErrorKey, logError } from '../lib/errors'
+import { clearSavedEmail, getSavedEmail } from '../lib/device'
 import { derivePinPassword, isValidPin } from '../lib/pin'
 import { Field, inputCls, Segmented } from '../components/ui'
 import { PinInput } from '../components/PinInput'
@@ -20,7 +21,8 @@ export function Welcome() {
   }, [status])
   const [url, setUrl] = useState('')
   const [anonKey, setAnonKey] = useState('')
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(() => getSavedEmail() ?? '')
+  const [emailLocked, setEmailLocked] = useState(() => getSavedEmail() !== null)
   const [password, setPassword] = useState('')
   const [authTab, setAuthTab] = useState<'in' | 'up'>('in')
   const [pin, setPin] = useState('')
@@ -193,18 +195,35 @@ export function Welcome() {
 
               <p className="text-center text-[13px] leading-relaxed text-ink2">💡 {t('authHint')}</p>
 
-              <Field label={t('email')}>
-                <input
-                  className={inputCls}
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  autoCapitalize="none"
-                  autoComplete="email"
-                  inputMode="email"
-                  placeholder="casal@email.com"
-                />
-              </Field>
+              {emailLocked ? (
+                <div className="flex items-center gap-2 rounded-2xl border border-line bg-card2 px-4 py-3">
+                  <span className="min-w-0 flex-1 truncate text-[14px] font-bold text-ink">👤 {email}</span>
+                  <button
+                    onClick={() => {
+                      clearSavedEmail()
+                      setEmail('')
+                      setEmailLocked(false)
+                      setMessage(null)
+                    }}
+                    className="press shrink-0 text-[13px] font-semibold text-accent"
+                  >
+                    {t('useAnotherEmail')}
+                  </button>
+                </div>
+              ) : (
+                <Field label={t('email')}>
+                  <input
+                    className={inputCls}
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    autoCapitalize="none"
+                    autoComplete="email"
+                    inputMode="email"
+                    placeholder="casal@email.com"
+                  />
+                </Field>
+              )}
 
               {passwordMode ? (
                 <Field label={t('password')}>
