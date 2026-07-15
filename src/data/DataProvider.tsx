@@ -231,6 +231,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setStatus('auth')
   }, [])
 
+  // Auth succeeded but the first data load failed — most commonly because
+  // schema.sql was never run on the Supabase project. Return a code the UI
+  // can turn into a clear instruction instead of failing silently.
+  const loadErrorCode = (e: unknown): string => {
+    const err = e as { code?: string; message?: string }
+    if (
+      err?.code === '42P01' ||
+      err?.code === 'PGRST205' ||
+      /relation .* does not exist|schema cache|does not exist/i.test(err?.message ?? '')
+    ) {
+      return 'missing-schema'
+    }
+    return err?.message || 'unknown'
+  }
+
   const signIn = useCallback(
     async (email: string, password: string): Promise<string | null> => {
       const cfg = getCloudConfig()
@@ -238,7 +253,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const sb = getSupabase(cfg)
       const { data, error } = await sb.auth.signInWithPassword({ email, password })
       if (error) return error.message
-      await startCloudAdapter(sb, data.session.user.id, data.session.user.email ?? null)
+      try {
+        await startCloudAdapter(sb, data.session.user.id, data.session.user.email ?? null)
+      } catch (e) {
+        return loadErrorCode(e)
+      }
       return null
     },
     [startCloudAdapter]
@@ -252,7 +271,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const { data, error } = await sb.auth.signUp({ email, password })
       if (error) return error.message
       if (!data.session) return 'confirm-email'
-      await startCloudAdapter(sb, data.session.user.id, data.session.user.email ?? null)
+      try {
+        await startCloudAdapter(sb, data.session.user.id, data.session.user.email ?? null)
+      } catch (e) {
+        return loadErrorCode(e)
+      }
       return null
     },
     [startCloudAdapter]

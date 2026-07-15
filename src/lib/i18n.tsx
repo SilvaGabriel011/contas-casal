@@ -10,6 +10,7 @@ const pt = {
     activeOne: 'Ativa',
     invalidSupabaseConfig: 'URL ou chave inválida — confira os dois valores no painel do Supabase.',
     missingConfig: 'Configuração da nuvem não encontrada — volte e cole a URL e a chave de novo.',
+    missingSchema: 'Login ok, mas as tabelas não existem ainda! Abra o SQL Editor no painel do Supabase, cole o arquivo supabase/schema.sql inteiro, clique em Run e tente de novo.',
     saveFailed: 'Não foi possível salvar — confira a internet e tente de novo.',
     deletedElsewhere: 'Este item foi excluído no outro celular.',
     // profiles
@@ -243,6 +244,7 @@ const en = {
     activeOne: 'Active',
     invalidSupabaseConfig: 'Invalid URL or key — double-check both values in your Supabase dashboard.',
     missingConfig: 'Cloud config not found — go back and paste the URL and key again.',
+    missingSchema: 'Signed in, but the tables do not exist yet! Open the SQL Editor in your Supabase dashboard, paste the whole supabase/schema.sql file, hit Run and try again.',
     saveFailed: "Couldn't save — check your connection and try again.",
     deletedElsewhere: 'This item was deleted on the other phone.',
     couple: 'Couple',

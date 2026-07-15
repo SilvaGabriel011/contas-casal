@@ -63,7 +63,10 @@ export function Welcome() {
       const result = mode === 'in' ? await signIn(email.trim(), secret) : await signUp(email.trim(), secret)
       if (result === 'confirm-email') setMessage({ kind: 'info', text: t('signUpDone') })
       else if (result === 'missing-config') setMessage({ kind: 'error', text: t('missingConfig') })
+      else if (result === 'missing-schema') setMessage({ kind: 'error', text: t('missingSchema') })
       else if (result) setMessage({ kind: 'error', text: t('authErrorGeneric', { msg: result }) })
+    } catch (e) {
+      setMessage({ kind: 'error', text: t('authErrorGeneric', { msg: (e as Error).message ?? '?' }) })
     } finally {
       setBusy(false)
     }

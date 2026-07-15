@@ -351,6 +351,7 @@ export function AddSheet({
                 value={installments}
                 onChange={(e) => setInstallments(e.target.value)}
                 inputMode="numeric"
+                pattern="[0-9]*"
               />
             </Field>
             <div className="flex items-end pb-3 text-sm font-semibold text-ink2">

@@ -24,6 +24,7 @@ export function PinInput({
           value={value}
           onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 4))}
           inputMode="numeric"
+          pattern="[0-9]*"
           autoComplete="one-time-code"
           autoFocus={autoFocus}
           aria-label={label}
