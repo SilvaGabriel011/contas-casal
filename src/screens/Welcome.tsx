@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAppData } from '../data/DataProvider'
 import { useI18n } from '../lib/i18n'
-import { getCloudConfig, hasBakedCloudConfig, SUPABASE_URL_RE } from '../lib/config'
+import { fetchRemoteConfig, getCloudConfig, hasBakedCloudConfig, SUPABASE_URL_RE } from '../lib/config'
 import { derivePinPassword, isValidPin } from '../lib/pin'
 import { Field, inputCls, Segmented } from '../components/ui'
 import { PinInput } from '../components/PinInput'
@@ -28,9 +28,14 @@ export function Welcome() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<{ kind: 'error' | 'info'; text: string } | null>(null)
 
-  const startCloud = () => {
+  const startCloud = async () => {
     setMessage(null)
-    const cfg = getCloudConfig()
+    let cfg = getCloudConfig()
+    if (!cfg) {
+      setBusy(true)
+      cfg = await fetchRemoteConfig()
+      setBusy(false)
+    }
     if (cfg) {
       chooseCloud(cfg)
       setStep('auth')
@@ -92,9 +97,12 @@ export function Welcome() {
             <>
               <button
                 onClick={startCloud}
-                className="press grad-accent w-full rounded-2xl py-4 text-center text-white shadow-lg"
+                disabled={busy}
+                className="press grad-accent w-full rounded-2xl py-4 text-center text-white shadow-lg disabled:opacity-70"
               >
-                <span className="block text-[16px] font-bold">☁️ {t('cloudLogin')}</span>
+                <span className="block text-[16px] font-bold">
+                  ☁️ {busy ? t('loading') : t('cloudLogin')}
+                </span>
                 <span className="block text-[12px] opacity-85">{t('cloudLoginHint')}</span>
               </button>
               <button

@@ -9,7 +9,15 @@ import {
 } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { HouseholdSettings, Income, Item, Payment, Snapshot } from '../types'
-import { getCloudConfig, getMode, saveCloudConfig, setMode, type AppMode, type CloudConfig } from '../lib/config'
+import {
+  fetchRemoteConfig,
+  getCloudConfig,
+  getMode,
+  saveCloudConfig,
+  setMode,
+  type AppMode,
+  type CloudConfig,
+} from '../lib/config'
 import { EMPTY_SNAPSHOT, type DataAdapter } from './adapter'
 import { LocalAdapter, resetDemoData } from './localAdapter'
 import { getSupabase, SupabaseAdapter } from './supabaseAdapter'
@@ -165,7 +173,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return
       }
       if (savedMode === 'cloud') {
-        const cfg = getCloudConfig()
+        const cfg = getCloudConfig() ?? (await fetchRemoteConfig())
+        if (cancelled) return
         if (cfg) {
           setModeState('cloud')
           const sb = getSupabase(cfg)

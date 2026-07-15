@@ -49,6 +49,29 @@ export function hasBakedCloudConfig(): boolean {
   return Boolean(ENV_URL && ENV_KEY)
 }
 
+// Runtime fallback: the deployment's serverless config endpoint. Covers the
+// case where env vars were saved after the static build, or were named
+// without the VITE_ prefix — no manual pasting needed.
+export async function fetchRemoteConfig(): Promise<CloudConfig | null> {
+  try {
+    const res = await fetch('/api/config')
+    if (!res.ok) return null
+    const cfg = await res.json()
+    if (
+      typeof cfg.url === 'string' &&
+      SUPABASE_URL_RE.test(cfg.url) &&
+      typeof cfg.anonKey === 'string' &&
+      cfg.anonKey.length >= 20
+    ) {
+      saveCloudConfig(cfg)
+      return cfg
+    }
+  } catch {
+    /* offline or local dev without the API — fall back to manual entry */
+  }
+  return null
+}
+
 export function saveCloudConfig(cfg: CloudConfig) {
   localStorage.setItem(CLOUD_KEY, JSON.stringify(cfg))
 }
