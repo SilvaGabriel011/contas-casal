@@ -62,6 +62,7 @@ export default async function handler(req: Request): Promise<Response> {
     lang?: string
     mode?: string
     text?: string
+    image?: string
     meta?: { today?: string; nameA?: string; nameB?: string; categories?: string[] }
   }
   try {
@@ -71,6 +72,55 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   const model = process.env.OPENAI_MODEL || 'gpt-4o-mini'
+
+  // Receipt scan: photo of a purchase receipt -> at least the final total.
+  if (body.mode === 'receipt') {
+    const image = String(body.image ?? '')
+    if (!image.startsWith('data:image/') || image.length > 2_500_000) return jsonError(400, 'bad-request')
+    const meta = body.meta ?? {}
+    const receiptSystem = [
+      'You read photos of purchase receipts for a household finance app and output strict JSON.',
+      `Today is ${meta.today ?? 'unknown'}. Valid category ids: ${(meta.categories ?? []).join(', ')}.`,
+      'Output ONLY: {"records":[{"type":"expense","note":string,"amount":number,"currency":"AUD"|"BRL","category":string?,"date":"YYYY-MM-DD"?}]}',
+      'amount = the receipt TOTAL actually charged (after discounts, including tax/GST).',
+      'currency: R$ or Brazilian layout -> BRL; otherwise AUD.',
+      'note = short merchant name. date = the purchase date printed on the receipt if legible, else omit.',
+      'category = best guess from the merchant (e.g. supermarket -> groceries, restaurant/cafe -> food, pharmacy -> health).',
+      'One record per receipt in the photo (usually one). If no total is readable, return {"records":[]}. Never invent an amount.',
+    ].join('\n')
+
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: receiptSystem },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Extract the total from this receipt.' },
+              { type: 'image_url', image_url: { url: image, detail: 'high' } },
+            ],
+          },
+        ],
+      }),
+    })
+    if (!res.ok) {
+      return jsonError(502, res.status === 401 ? 'invalid-openai-key' : 'upstream-error')
+    }
+    const data = await res.json()
+    const raw = data?.choices?.[0]?.message?.content ?? '{}'
+    try {
+      const parsed = JSON.parse(raw)
+      return new Response(JSON.stringify({ records: Array.isArray(parsed.records) ? parsed.records : [] }), {
+        headers: { 'content-type': 'application/json' },
+      })
+    } catch {
+      return jsonError(502, 'upstream-error')
+    }
+  }
 
   // Quick-add: turn a casual sentence into structured finance records.
   if (body.mode === 'parse') {

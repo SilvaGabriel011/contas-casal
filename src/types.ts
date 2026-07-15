@@ -99,6 +99,7 @@ export interface HouseholdSettings {
   // Stored in the settings JSON blob so no schema migration is needed.
   goals?: SavingsGoal[]
   taxCategories?: string[]
+  notifyEmails?: string[]
 }
 
 export interface Snapshot {

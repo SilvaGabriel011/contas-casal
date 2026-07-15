@@ -42,6 +42,18 @@ export function Settings() {
   const [pushBusy, setPushBusy] = useState(false)
   const [lockOn, setLockOn] = useState(isLockEnabled)
   const [lockOk, setLockOk] = useState(false)
+  const [notifyEmailsRaw, setNotifyEmailsRaw] = useState((snapshot.settings.notifyEmails ?? []).join(', '))
+  const notifyEmailsDirty =
+    notifyEmailsRaw.trim() !== (snapshot.settings.notifyEmails ?? []).join(', ').trim()
+
+  const saveNotifyEmails = async () => {
+    const emails = notifyEmailsRaw
+      .split(/[,;\s]+/)
+      .map((e) => e.trim().toLowerCase())
+      .filter((e) => e.includes('@'))
+    await saveSettings({ ...snapshot.settings, notifyEmails: emails })
+    setNotifyEmailsRaw(emails.join(', '))
+  }
 
   useEffect(() => {
     if (!pushSupported()) {
@@ -350,11 +362,13 @@ export function Settings() {
         </button>
       </section>
 
-      {mode === 'cloud' && pushState !== 'unsupported' && (
+      {mode === 'cloud' && (
         <section className="space-y-3 rounded-3xl border border-line bg-card p-5">
           <p className="text-[13px] font-extrabold tracking-wide text-ink2 uppercase">🔔 {t('pushSection')}</p>
           <p className="text-[13px] leading-relaxed text-ink2">{t('pushBody')}</p>
-          {pushState === 'on' ? (
+          {pushState === 'unsupported' ? (
+            <p className="text-[12px] leading-relaxed text-ink2">📲 {t('pushUnsupportedHint')}</p>
+          ) : pushState === 'on' ? (
             <button
               onClick={async () => {
                 setPushBusy(true)
@@ -384,7 +398,32 @@ export function Settings() {
               {pushBusy ? t('loading') : `🔔 ${t('pushEnable')}`}
             </button>
           )}
-          <p className="text-[11px] leading-relaxed text-ink2">{t('pushIosHint')}</p>
+          {pushState !== 'unsupported' && (
+            <p className="text-[11px] leading-relaxed text-ink2">{t('pushIosHint')}</p>
+          )}
+
+          <div className="border-t border-line pt-3">
+            <Field label={`✉️ ${t('notifyEmailsLabel')}`}>
+              <input
+                className={inputCls}
+                value={notifyEmailsRaw}
+                onChange={(e) => setNotifyEmailsRaw(e.target.value)}
+                placeholder="voce@email.com, izabela@email.com"
+                autoCapitalize="none"
+                autoCorrect="off"
+                inputMode="email"
+              />
+            </Field>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-ink2">{t('notifyEmailsHint')}</p>
+            {notifyEmailsDirty && (
+              <button
+                onClick={saveNotifyEmails}
+                className="press mt-2 w-full rounded-2xl border border-accent py-2.5 text-[13px] font-bold text-accent"
+              >
+                {t('save')}
+              </button>
+            )}
+          </div>
         </section>
       )}
 

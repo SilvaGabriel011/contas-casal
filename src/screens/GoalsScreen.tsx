@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Currency, SavingsGoal } from '../types'
 import { useAppData } from '../data/DataProvider'
 import { useI18n } from '../lib/i18n'
-import { formatMoneyShort, parseAmount } from '../lib/money'
+import { formatMoney, formatMoneyShort, parseAmount } from '../lib/money'
 import { monthsInclusive, todayISO } from '../lib/dates'
 import { EmptyState, Field, inputCls, Segmented } from '../components/ui'
 
@@ -103,21 +103,51 @@ export function GoalsScreen() {
                 </div>
 
                 {depositId === g.id && (
-                  <div className="anim-rise mt-2 flex items-end gap-2">
-                    <input
-                      className={`${inputCls} num flex-1`}
-                      value={depositRaw}
-                      onChange={(e) => setDepositRaw(e.target.value)}
-                      inputMode="decimal"
-                      placeholder={decimalSep === ',' ? '0,00' : '0.00'}
-                      autoFocus
-                    />
-                    <button
-                      onClick={() => deposit(g)}
-                      className="press grad-accent shrink-0 rounded-xl px-4 py-3 text-[13px] font-bold text-white"
-                    >
-                      {t('save')}
-                    </button>
+                  <div className="anim-rise mt-2 space-y-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      {[50, 100, 500, 1000].map((step) => (
+                        <button
+                          key={step}
+                          onClick={() => {
+                            const current = parseAmount(depositRaw, decimalSep) ?? 0
+                            setDepositRaw(String(current + step))
+                          }}
+                          className="press rounded-full border border-line bg-card2 px-3 py-1.5 text-[12px] font-bold text-ink"
+                        >
+                          +{step}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <input
+                        className={`${inputCls} num flex-1`}
+                        value={depositRaw}
+                        onChange={(e) => setDepositRaw(e.target.value)}
+                        inputMode="decimal"
+                        placeholder={decimalSep === ',' ? '0,00' : '0.00'}
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => deposit(g)}
+                        disabled={!parseAmount(depositRaw, decimalSep)}
+                        className="press grad-accent shrink-0 rounded-xl px-4 py-3 text-[13px] font-bold text-white disabled:opacity-50"
+                      >
+                        {t('save')}
+                      </button>
+                    </div>
+                    {(() => {
+                      const v = parseAmount(depositRaw, decimalSep)
+                      if (v === null || v === 0) return null
+                      const next = Math.max(0, g.saved + v)
+                      return (
+                        <p className="num text-[12px] font-semibold text-accent">
+                          {t('goalNewTotal', {
+                            v: formatMoney(next, g.currency, locale),
+                            p: Math.round(Math.min(1, next / g.target) * 100),
+                          })}
+                        </p>
+                      )
+                    })()}
                   </div>
                 )}
               </div>
@@ -160,25 +190,29 @@ function GoalForm({
   onDelete?: () => void
   onCancel: () => void
 }) {
-  const { t, decimalSep } = useI18n()
+  const { t, locale, decimalSep } = useI18n()
   const [emoji, setEmoji] = useState(goal?.emoji ?? '')
   const [name, setName] = useState(goal?.name ?? '')
   const [targetRaw, setTargetRaw] = useState(goal ? String(goal.target) : '')
+  const [savedRaw, setSavedRaw] = useState(goal && goal.saved > 0 ? String(goal.saved) : '')
   const [currency, setCurrency] = useState<Currency>(goal?.currency ?? 'AUD')
   const [targetDate, setTargetDate] = useState(goal?.targetDate ?? '')
   const [error, setError] = useState('')
 
+  const target = parseAmount(targetRaw, decimalSep)
+
   const save = async () => {
-    const target = parseAmount(targetRaw, decimalSep)
     if (!name.trim()) return setError(t('fillName'))
     if (target === null || target <= 0) return setError(t('invalidAmount'))
+    const saved = savedRaw.trim() === '' ? (goal?.saved ?? 0) : parseAmount(savedRaw, decimalSep)
+    if (saved === null || saved < 0) return setError(t('invalidAmount'))
     await onSave({
       id: goal?.id ?? crypto.randomUUID(),
       emoji: emoji.trim(),
       name: name.trim(),
       target,
       currency,
-      saved: goal?.saved ?? 0,
+      saved,
       targetDate: targetDate || null,
       createdAt: goal?.createdAt ?? new Date().toISOString(),
     })
@@ -215,8 +249,13 @@ function GoalForm({
             value={targetRaw}
             onChange={(e) => setTargetRaw(e.target.value)}
             inputMode="decimal"
-            placeholder={decimalSep === ',' ? '0,00' : '0.00'}
+            placeholder={decimalSep === ',' ? '27000' : '27000'}
           />
+          {target !== null && target > 0 && (
+            <span className="num mt-1 block text-[12px] font-semibold text-ink2">
+              = {formatMoney(target, currency, locale)}
+            </span>
+          )}
         </Field>
         <Field label={t('currency')}>
           <Segmented
@@ -229,6 +268,15 @@ function GoalForm({
           />
         </Field>
       </div>
+      <Field label={t('goalSavedLabel')}>
+        <input
+          className={`${inputCls} num`}
+          value={savedRaw}
+          onChange={(e) => setSavedRaw(e.target.value)}
+          inputMode="decimal"
+          placeholder={decimalSep === ',' ? '0,00' : '0.00'}
+        />
+      </Field>
       <Field label={t('goalDateLabel')}>
         <input
           type="date"

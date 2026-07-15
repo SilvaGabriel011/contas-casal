@@ -89,16 +89,37 @@ export interface QuickDraft {
 
 const DRAFT_TYPES = new Set(['expense', 'bill', 'subscription', 'installment', 'purchase', 'income'])
 
+export interface QuickAddMeta {
+  today: string
+  nameA: string
+  nameB: string
+  categories: string[]
+}
+
 export async function parseQuickAdd(
   text: string,
-  meta: { today: string; nameA: string; nameB: string; categories: string[] },
+  meta: QuickAddMeta,
   lang: string,
   accessToken: string
 ): Promise<QuickDraft[]> {
+  return requestRecords({ mode: 'parse', text, meta, lang }, accessToken)
+}
+
+// Receipt photo (data URL, already downscaled) -> at least the final total.
+export async function parseReceipt(
+  imageDataUrl: string,
+  meta: QuickAddMeta,
+  lang: string,
+  accessToken: string
+): Promise<QuickDraft[]> {
+  return requestRecords({ mode: 'receipt', image: imageDataUrl, meta, lang }, accessToken)
+}
+
+async function requestRecords(body: object, accessToken: string): Promise<QuickDraft[]> {
   const res = await fetch('/api/ai', {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
-    body: JSON.stringify({ mode: 'parse', text, meta, lang }),
+    body: JSON.stringify(body),
   })
   if (!res.ok) {
     if (res.status === 404) throw new Error('unavailable' satisfies AiError)

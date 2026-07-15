@@ -46,23 +46,42 @@ export default async function handler(req: any, res: any) {
   const sb = createClient(url, serviceKey, { auth: { persistSession: false } })
   const { data: subs, error } = await sb.from('push_subscriptions').select('*')
   if (error) return res.status(500).json({ error: error.message })
-  if (!subs || subs.length === 0) return res.status(200).json({ sent: 0 })
+
+  // Optional email channel (Resend): recipients come from each household's
+  // settings (Ajustes -> Notificações -> E-mails de aviso).
+  const resendKey = process.env.RESEND_API_KEY
+  const emailFrom = process.env.RESEND_FROM || 'Contas do Casal <onboarding@resend.dev>'
+  const emailsByUser = new Map<string, string[]>()
+  if (resendKey) {
+    const { data: settingsRows } = await sb.from('app_settings').select('user_id,data')
+    for (const row of settingsRows ?? []) {
+      const emails = Array.isArray(row?.data?.notifyEmails)
+        ? row.data.notifyEmails.filter((e: unknown) => typeof e === 'string' && e.includes('@'))
+        : []
+      if (emails.length > 0) emailsByUser.set(row.user_id, emails)
+    }
+  }
+
+  if ((!subs || subs.length === 0) && emailsByUser.size === 0) return res.status(200).json({ sent: 0 })
 
   // The couple lives in Australia — "tomorrow" is Sydney's tomorrow.
   const sydneyToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Australia/Sydney' }).format(new Date())
   const tomorrow = addDays(sydneyToday, 1)
 
   const byUser = new Map<string, any[]>()
-  for (const s of subs) {
+  for (const s of subs ?? []) {
     const list = byUser.get(s.user_id) ?? []
     list.push(s)
     byUser.set(s.user_id, list)
   }
 
   let sent = 0
+  let emailed = 0
   const dead: string[] = []
+  const userIds = new Set<string>([...byUser.keys(), ...emailsByUser.keys()])
 
-  for (const [userId, userSubs] of byUser) {
+  for (const userId of userIds) {
+    const userSubs = byUser.get(userId) ?? []
     const [items, payments] = await Promise.all([
       sb.from('items').select('*').eq('user_id', userId).eq('archived', false),
       sb.from('payments').select('item_id,due_date').eq('user_id', userId),
@@ -77,6 +96,32 @@ export default async function handler(req: any, res: any) {
       }
     }
     if (due.length === 0) continue
+
+    const emails = emailsByUser.get(userId)
+    if (resendKey && emails && emails.length > 0) {
+      const fmtAud = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'AUD' })
+      const fmtBrl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
+      const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      const rows = due
+        .map(
+          ({ item }) =>
+            `<li style="margin:4px 0"><b>${esc(item.name)}</b> — ${(item.currency === 'BRL' ? fmtBrl : fmtAud).format(item.amount)}</li>`
+        )
+        .join('')
+      const subject =
+        due.length === 1 ? `💸 ${due[0].item.name} vence amanhã` : `💸 ${due.length} contas vencem amanhã`
+      const html = `<p>Oi! Amanhã (${tomorrow.split('-').reverse().join('/')}) vence${due.length > 1 ? 'm' : ''}:</p><ul>${rows}</ul><p style="color:#888;font-size:12px">Enviado pelo Contas do Casal 💞</p>`
+      try {
+        const r = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { authorization: `Bearer ${resendKey}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ from: emailFrom, to: emails, subject, html }),
+        })
+        if (r.ok) emailed++
+      } catch {
+        /* email failure must never block the pushes */
+      }
+    }
 
     for (const sub of userSubs) {
       const lang = sub.lang === 'en' ? 'en' : 'pt'
@@ -102,5 +147,5 @@ export default async function handler(req: any, res: any) {
   }
 
   if (dead.length > 0) await sb.from('push_subscriptions').delete().in('endpoint', dead)
-  return res.status(200).json({ sent, tomorrow })
+  return res.status(200).json({ sent, emailed, tomorrow })
 }

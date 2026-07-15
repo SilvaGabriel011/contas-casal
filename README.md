@@ -77,6 +77,14 @@ Aviso no celular na noite anterior a cada vencimento ("pagar conta X amanhã"). 
 | `VAPID_SUBJECT` | `mailto:seu-email@exemplo.com` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Settings → API → `service_role` (⚠️ secreta — só na Vercel) |
 | `CRON_SECRET` | qualquer string longa aleatória (protege o endpoint do cron) |
+| `RESEND_API_KEY` | opcional — chave em [resend.com](https://resend.com) pra receber o aviso também **por e-mail** |
+| `RESEND_FROM` | opcional — remetente, ex: `Contas do Casal <contas@seudominio.com>` |
+
+**E-mail pros dois**: com a `RESEND_API_KEY` configurada, cadastre os dois e-mails em
+**Ajustes → Notificações → E-mails de aviso** e o resumo "vence amanhã" chega pra vocês dois.
+No plano grátis do Resend, o remetente padrão (`onboarding@resend.dev`) só entrega pro e-mail
+da própria conta Resend — pra enviar pros dois, verifique um domínio seu em Resend → Domains
+e use ele no `RESEND_FROM`.
 
 3. Rode o `supabase/schema.sql` de novo no SQL Editor (cria a tabela `push_subscriptions` e o
    bucket de recibos — o script é idempotente, pode rodar quantas vezes quiser).
