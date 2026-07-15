@@ -193,6 +193,70 @@ export class SupabaseAdapter implements DataAdapter {
     if (error) throw error
   }
 
+  private itemRow(item: Item) {
+    return {
+      id: item.id,
+      user_id: this.userId,
+      kind: item.kind,
+      name: item.name,
+      category: item.category,
+      amount: item.amount,
+      currency: item.currency,
+      owner: item.owner,
+      frequency: item.frequency,
+      start_date: item.startDate,
+      installments_total: item.installmentsTotal,
+      notes: item.notes,
+      archived: item.archived,
+    }
+  }
+
+  async replaceAll(snapshot: Snapshot) {
+    // items cascade-delete their payments; incomes are independent
+    const del1 = await this.sb.from('items').delete().eq('user_id', this.userId)
+    if (del1.error) throw del1.error
+    const del2 = await this.sb.from('incomes').delete().eq('user_id', this.userId)
+    if (del2.error) throw del2.error
+
+    if (snapshot.items.length) {
+      const { error } = await this.sb.from('items').insert(snapshot.items.map((i) => this.itemRow(i)))
+      if (error) throw error
+    }
+    if (snapshot.incomes.length) {
+      const { error } = await this.sb.from('incomes').insert(
+        snapshot.incomes.map((i) => ({
+          id: i.id,
+          user_id: this.userId,
+          name: i.name,
+          owner: i.owner,
+          amount: i.amount,
+          currency: i.currency,
+          frequency: i.frequency,
+          next_date: i.nextDate,
+          active: i.active,
+          hourly_rate: i.hourlyRate,
+          hours_per_day: i.hoursPerDay,
+          days_per_week: i.daysPerWeek,
+        }))
+      )
+      if (error) throw error
+    }
+    if (snapshot.payments.length) {
+      const { error } = await this.sb.from('payments').insert(
+        snapshot.payments.map((p) => ({
+          id: p.id,
+          user_id: this.userId,
+          item_id: p.itemId,
+          due_date: p.dueDate,
+          paid_at: p.paidAt,
+          amount: p.amount,
+        }))
+      )
+      if (error) throw error
+    }
+    await this.saveSettings(snapshot.settings)
+  }
+
   subscribe(onRemoteChange: () => void): () => void {
     const channel = this.sb
       .channel('cc-sync')

@@ -77,5 +77,10 @@ export class LocalAdapter implements DataAdapter {
     this.snap = reduce.putSettings(this.snap, settings)
     this.commit()
   }
+
+  async replaceAll(snapshot: Snapshot) {
+    this.snap = snapshot
+    this.commit()
+  }
 }
 

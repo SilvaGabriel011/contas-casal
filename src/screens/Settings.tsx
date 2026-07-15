@@ -16,6 +16,7 @@ export function Settings() {
     signOut,
     backToWelcome,
     resetDemo,
+    importSnapshot,
     getCalendarFeed,
     enableCalendarFeed,
     disableCalendarFeed,
@@ -43,6 +44,33 @@ export function Settings() {
       saveSettings({ ...snapshot.settings, nameA: a, nameB: b })
     }
     setDirty(false)
+  }
+
+  const importJson = (file: File) => {
+    const reader = new FileReader()
+    reader.onload = async () => {
+      try {
+        const parsed = JSON.parse(String(reader.result ?? ''))
+        if (
+          !Array.isArray(parsed.items) ||
+          !Array.isArray(parsed.incomes) ||
+          !Array.isArray(parsed.payments)
+        ) {
+          throw new Error('shape')
+        }
+        if (!confirm(t('importConfirm'))) return
+        const ok = await importSnapshot({
+          items: parsed.items,
+          incomes: parsed.incomes,
+          payments: parsed.payments,
+          settings: { ...snapshot.settings, ...parsed.settings },
+        })
+        if (ok) alert(t('importDone'))
+      } catch {
+        alert(t('importInvalid'))
+      }
+    }
+    reader.readAsText(file)
   }
 
   const exportJson = () => {
@@ -189,6 +217,20 @@ export function Settings() {
         >
           📤 {t('exportData')}
         </button>
+
+        <label className="press block w-full cursor-pointer rounded-2xl border border-line py-3 text-center text-[14px] font-semibold text-ink">
+          📥 {t('importData')}
+          <input
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) importJson(f)
+              e.target.value = ''
+            }}
+          />
+        </label>
       </section>
 
       <section className="space-y-3 rounded-3xl border border-line bg-card p-5">

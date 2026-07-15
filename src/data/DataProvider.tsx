@@ -48,6 +48,7 @@ interface AppData {
   deleteIncome: (id: string) => Promise<void>
   setPaid: (item: Item, dueDate: string, paid: boolean) => Promise<void>
   saveSettings: (settings: HouseholdSettings) => Promise<void>
+  importSnapshot: (snapshot: Snapshot) => Promise<boolean>
   resetDemo: () => void
 }
 
@@ -399,6 +400,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [mutate]
   )
 
+  const importSnapshot = useCallback(
+    async (imported: Snapshot): Promise<boolean> => {
+      const adapter = adapterRef.current
+      if (!adapter) return false
+      try {
+        await adapter.replaceAll(imported)
+        await refetch()
+        return true
+      } catch {
+        await refetch()
+        setSaveError(true)
+        return false
+      }
+    },
+    [refetch]
+  )
+
   const resetDemo = useCallback(() => {
     resetDemoData()
     startAdapter(new LocalAdapter())
@@ -427,6 +445,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     deleteIncome,
     setPaid,
     saveSettings,
+    importSnapshot,
     resetDemo,
   }
 

@@ -9,6 +9,8 @@ export interface DataAdapter {
   addPayment(payment: Payment): Promise<void>
   removePayment(itemId: string, dueDate: string): Promise<void>
   saveSettings(settings: HouseholdSettings): Promise<void>
+  // Full restore: replaces every row with the imported snapshot's contents.
+  replaceAll(snapshot: Snapshot): Promise<void>
   // Called with a callback that should refetch when remote data changes.
   subscribe?(onRemoteChange: () => void): () => void
 }
