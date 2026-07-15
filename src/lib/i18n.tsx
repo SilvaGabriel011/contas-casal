@@ -152,6 +152,9 @@ const pt = {
     // contagem Brasil
     brCountdownTitle: 'Parcelas do Brasil acabam em {month}! 🎉',
     brCountdownBody: 'faltam {n} parcelas · {v}',
+    trioLeft: 'sobra/mês',
+    agendaCouple: 'Agenda do casal',
+    diagBuild: 'Versão instalada',
     menuSettingsHint: 'Idioma, tema, perfis, dados',
     // greetings
     goodMorning: 'Bom dia',
@@ -577,6 +580,9 @@ const en = {
     aiReceiptScan: 'Scan receipt with AI',
     brCountdownTitle: 'Brazil instalments end in {month}! 🎉',
     brCountdownBody: '{n} instalments left · {v}',
+    trioLeft: 'left/month',
+    agendaCouple: 'Couple agenda',
+    diagBuild: 'Installed build',
     menuSettingsHint: 'Language, theme, profiles, data',
     goodMorning: 'Good morning',
     goodAfternoon: 'Good afternoon',

@@ -41,6 +41,12 @@ function cspMeta(): Plugin {
 // GitHub Pages serves the app from /contas-casal/; Vercel and local dev use /.
 export default defineConfig({
   base: process.env.GITHUB_PAGES ? '/contas-casal/' : '/',
+  // Build stamp shown in Ajustes -> Diagnostico so the couple can tell at a
+  // glance whether a phone already picked up the latest deploy.
+  define: {
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+    __BUILD_SHA__: JSON.stringify((process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev').slice(0, 7)),
+  },
   plugins: [
     react(),
     tailwindcss(),
