@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Expense, HouseholdSettings, Income, Item, Payment, Snapshot } from '../types'
+import type { Expense, HouseholdSettings, Income, Item, Payment, Snapshot, Transfer } from '../types'
 import { getDeviceOwner } from '../lib/device'
 import {
   fetchRemoteConfig,
@@ -50,6 +50,8 @@ interface AppData {
   setPaid: (item: Item, dueDate: string, paid: boolean) => Promise<void>
   upsertExpense: (expense: Expense) => Promise<void>
   deleteExpense: (id: string) => Promise<void>
+  upsertTransfer: (transfer: Transfer) => Promise<void>
+  deleteTransfer: (id: string) => Promise<void>
   saveSettings: (settings: HouseholdSettings) => Promise<void>
   importSnapshot: (snapshot: Snapshot) => Promise<boolean>
   resetDemo: () => void
@@ -409,6 +411,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [mutate]
   )
 
+  const upsertTransfer = useCallback(
+    (transfer: Transfer) =>
+      mutate((s) => reduce.upsertTransfer(s, transfer), (a) => a.upsertTransfer(transfer)),
+    [mutate]
+  )
+
+  const deleteTransfer = useCallback(
+    (id: string) => mutate((s) => reduce.deleteTransfer(s, id), (a) => a.deleteTransfer(id)),
+    [mutate]
+  )
+
   const saveSettings = useCallback(
     (settings: HouseholdSettings) =>
       mutate((s) => reduce.putSettings(s, settings), (a) => a.saveSettings(settings)),
@@ -461,6 +474,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setPaid,
     upsertExpense,
     deleteExpense,
+    upsertTransfer,
+    deleteTransfer,
     saveSettings,
     importSnapshot,
     resetDemo,

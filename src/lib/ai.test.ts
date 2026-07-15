@@ -67,6 +67,7 @@ function snapshotWith(paymentCount: number): Snapshot {
       paidBy: null,
     })),
     expenses: [],
+    transfers: [],
   }
 }
 

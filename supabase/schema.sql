@@ -105,6 +105,29 @@ begin
 exception when duplicate_object then null;
 end $$;
 
+-- Remessas Austrália -> Brasil (Wise, Remitly…).
+create table if not exists public.transfers (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  date date not null,
+  aud_sent numeric(12, 2) not null check (aud_sent > 0),
+  brl_received numeric(12, 2) not null check (brl_received > 0),
+  fee_aud numeric(12, 2),
+  note text,
+  created_at timestamptz not null default now()
+);
+
+alter table public.transfers enable row level security;
+drop policy if exists "own transfers" on public.transfers;
+create policy "own transfers" on public.transfers
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+do $$
+begin
+  alter publication supabase_realtime add table public.transfers;
+exception when duplicate_object then null;
+end $$;
+
 -- Acerto do casal: quem efetivamente pagou cada conta.
 alter table public.payments add column if not exists paid_by text check (paid_by in ('a', 'b'));
 

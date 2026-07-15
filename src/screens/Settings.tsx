@@ -66,6 +66,7 @@ export function Settings() {
           incomes: parsed.incomes,
           payments: parsed.payments,
           expenses: Array.isArray(parsed.expenses) ? parsed.expenses : [],
+          transfers: Array.isArray(parsed.transfers) ? parsed.transfers : [],
           settings: { ...snapshot.settings, ...parsed.settings },
         })
         if (ok) alert(t('importDone'))

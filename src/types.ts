@@ -63,6 +63,16 @@ export interface Budget {
   currency: Currency
 }
 
+export interface Transfer {
+  id: string
+  date: string
+  audSent: number
+  brlReceived: number
+  feeAud: number | null
+  note: string | null
+  createdAt: string
+}
+
 export interface CustomCategory {
   id: string
   emoji: string
@@ -82,6 +92,7 @@ export interface Snapshot {
   incomes: Income[]
   payments: Payment[]
   expenses: Expense[]
+  transfers: Transfer[]
   settings: HouseholdSettings
 }
 

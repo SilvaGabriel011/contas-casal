@@ -50,6 +50,7 @@ const snap = (items: Item[], payments: Payment[], expenses: Expense[]): Snapshot
   incomes: [],
   payments,
   expenses,
+  transfers: [],
   settings: DEFAULT_SETTINGS,
 })
 

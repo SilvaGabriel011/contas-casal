@@ -1,4 +1,4 @@
-import type { Expense, HouseholdSettings, Income, Item, Payment, Snapshot } from '../types'
+import type { Expense, HouseholdSettings, Income, Item, Payment, Snapshot, Transfer } from '../types'
 
 // Pure snapshot transformations shared by the demo adapter and the
 // cloud-mode optimistic updates, so both modes apply identical rules.
@@ -52,4 +52,12 @@ export function upsertExpense(s: Snapshot, expense: Expense): Snapshot {
 
 export function deleteExpense(s: Snapshot, id: string): Snapshot {
   return { ...s, expenses: s.expenses.filter((e) => e.id !== id) }
+}
+
+export function upsertTransfer(s: Snapshot, transfer: Transfer): Snapshot {
+  return { ...s, transfers: [...s.transfers.filter((t) => t.id !== transfer.id), transfer] }
+}
+
+export function deleteTransfer(s: Snapshot, id: string): Snapshot {
+  return { ...s, transfers: s.transfers.filter((t) => t.id !== id) }
 }

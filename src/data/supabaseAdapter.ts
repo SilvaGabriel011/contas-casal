@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import type { Expense, HouseholdSettings, Income, Item, Payment, Snapshot } from '../types'
+import type { Expense, HouseholdSettings, Income, Item, Payment, Snapshot, Transfer } from '../types'
 import type { CloudConfig } from '../lib/config'
 import { DEFAULT_SETTINGS, type DataAdapter } from './adapter'
 
@@ -58,6 +58,17 @@ type PaymentRow = {
   paid_by: 'a' | 'b' | null
 }
 
+type TransferRow = {
+  id: string
+  user_id: string
+  date: string
+  aud_sent: number
+  brl_received: number
+  fee_aud: number | null
+  note: string | null
+  created_at: string
+}
+
 type ExpenseRow = {
   id: string
   user_id: string
@@ -111,6 +122,16 @@ const paymentFromRow = (r: PaymentRow): Payment => ({
   paidBy: r.paid_by ?? null,
 })
 
+const transferFromRow = (r: TransferRow): Transfer => ({
+  id: r.id,
+  date: r.date,
+  audSent: Number(r.aud_sent),
+  brlReceived: Number(r.brl_received),
+  feeAud: r.fee_aud === null ? null : Number(r.fee_aud),
+  note: r.note,
+  createdAt: r.created_at,
+})
+
 const expenseFromRow = (r: ExpenseRow): Expense => ({
   id: r.id,
   date: r.date,
@@ -130,21 +151,23 @@ export class SupabaseAdapter implements DataAdapter {
   ) {}
 
   async load(): Promise<Snapshot> {
-    const [items, incomes, payments, expenses, settings] = await Promise.all([
+    const [items, incomes, payments, expenses, transfers, settings] = await Promise.all([
       this.sb.from('items').select('*').order('created_at'),
       this.sb.from('incomes').select('*').order('created_at'),
       this.sb.from('payments').select('*'),
       this.sb.from('expenses').select('*'),
+      this.sb.from('transfers').select('*'),
       this.sb.from('app_settings').select('*').maybeSingle(),
     ])
     const firstError =
-      items.error ?? incomes.error ?? payments.error ?? expenses.error ?? settings.error
+      items.error ?? incomes.error ?? payments.error ?? expenses.error ?? transfers.error ?? settings.error
     if (firstError) throw firstError
     return {
       items: ((items.data ?? []) as ItemRow[]).map(itemFromRow),
       incomes: ((incomes.data ?? []) as IncomeRow[]).map(incomeFromRow),
       payments: ((payments.data ?? []) as PaymentRow[]).map(paymentFromRow),
       expenses: ((expenses.data ?? []) as ExpenseRow[]).map(expenseFromRow),
+      transfers: ((transfers.data ?? []) as TransferRow[]).map(transferFromRow),
       settings: { ...DEFAULT_SETTINGS, ...((settings.data?.data as Partial<HouseholdSettings>) ?? {}) },
     }
   }
@@ -232,6 +255,24 @@ export class SupabaseAdapter implements DataAdapter {
     if (error) throw error
   }
 
+  async upsertTransfer(transfer: Transfer) {
+    const { error } = await this.sb.from('transfers').upsert({
+      id: transfer.id,
+      user_id: this.userId,
+      date: transfer.date,
+      aud_sent: transfer.audSent,
+      brl_received: transfer.brlReceived,
+      fee_aud: transfer.feeAud,
+      note: transfer.note,
+    })
+    if (error) throw error
+  }
+
+  async deleteTransfer(id: string) {
+    const { error } = await this.sb.from('transfers').delete().eq('id', id)
+    if (error) throw error
+  }
+
   async removePayment(itemId: string, dueDate: string) {
     const { error } = await this.sb.from('payments').delete().eq('item_id', itemId).eq('due_date', dueDate)
     if (error) throw error
@@ -270,6 +311,8 @@ export class SupabaseAdapter implements DataAdapter {
     if (del2.error) throw del2.error
     const del3 = await this.sb.from('expenses').delete().eq('user_id', this.userId)
     if (del3.error) throw del3.error
+    const del4 = await this.sb.from('transfers').delete().eq('user_id', this.userId)
+    if (del4.error) throw del4.error
 
     if (snapshot.items.length) {
       const { error } = await this.sb.from('items').insert(snapshot.items.map((i) => this.itemRow(i)))
@@ -308,6 +351,20 @@ export class SupabaseAdapter implements DataAdapter {
       )
       if (error) throw error
     }
+    if (snapshot.transfers.length) {
+      const { error } = await this.sb.from('transfers').insert(
+        snapshot.transfers.map((t) => ({
+          id: t.id,
+          user_id: this.userId,
+          date: t.date,
+          aud_sent: t.audSent,
+          brl_received: t.brlReceived,
+          fee_aud: t.feeAud,
+          note: t.note,
+        }))
+      )
+      if (error) throw error
+    }
     if (snapshot.expenses.length) {
       const { error } = await this.sb.from('expenses').insert(
         snapshot.expenses.map((e) => ({
@@ -334,6 +391,7 @@ export class SupabaseAdapter implements DataAdapter {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'incomes' }, onRemoteChange)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, onRemoteChange)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, onRemoteChange)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transfers' }, onRemoteChange)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, onRemoteChange)
       // Events emitted while the socket was down are gone forever, so every
       // (re)join must trigger a catch-up refetch.

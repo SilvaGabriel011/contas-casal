@@ -13,6 +13,7 @@ import { IncomeScreen } from './screens/IncomeScreen'
 import { More, type MenuEntry } from './screens/More'
 import { ExpensesScreen } from './screens/ExpensesScreen'
 import { SettleScreen } from './screens/SettleScreen'
+import { TransfersScreen } from './screens/TransfersScreen'
 import { Welcome } from './screens/Welcome'
 import { AiChat } from './screens/AiChat'
 
@@ -132,6 +133,13 @@ function Shell() {
       labelKey: 'menuSettle',
       hintKey: 'menuSettleHint',
       render: () => <SettleScreen />,
+    },
+    {
+      view: 'transfers',
+      emoji: '✈️',
+      labelKey: 'menuTransfers',
+      hintKey: 'menuTransfersHint',
+      render: () => <TransfersScreen />,
     },
   ]
 
