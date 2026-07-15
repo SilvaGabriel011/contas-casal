@@ -56,11 +56,63 @@ export default async function handler(req: Request): Promise<Response> {
   })
   if (!userRes.ok) return jsonError(401, 'unauthorized')
 
-  let body: { messages?: ChatMessage[]; context?: string; lang?: string }
+  let body: {
+    messages?: ChatMessage[]
+    context?: string
+    lang?: string
+    mode?: string
+    text?: string
+    meta?: { today?: string; nameA?: string; nameB?: string; categories?: string[] }
+  }
   try {
     body = await req.json()
   } catch {
     return jsonError(400, 'bad-request')
+  }
+
+  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini'
+
+  // Quick-add: turn a casual sentence into structured finance records.
+  if (body.mode === 'parse') {
+    const text = String(body.text ?? '').slice(0, 2000)
+    if (!text.trim()) return jsonError(400, 'bad-request')
+    const meta = body.meta ?? {}
+    const parseSystem = [
+      'You convert casual Portuguese or English descriptions of household finance records into strict JSON.',
+      `Today is ${meta.today ?? 'unknown'}. Partner A is "${meta.nameA ?? 'A'}", partner B is "${meta.nameB ?? 'B'}".`,
+      `Valid category ids: ${(meta.categories ?? []).join(', ')}.`,
+      'Output ONLY a JSON object: {"records":[...]}. Each record:',
+      '{"type":"expense"|"bill"|"subscription"|"installment"|"purchase"|"income","name":string?,"note":string?,"amount":number,"currency":"AUD"|"BRL","category":string?,"owner":"a"|"b"|"shared"?,"paidBy":"a"|"b"?,"date":"YYYY-MM-DD"?,"frequency":"weekly"|"fortnightly"|"monthly"|"yearly"|"once"?,"installmentsTotal":number?}',
+      'Rules: money already spent day-to-day -> expense (note = short description). Recurring obligations -> bill or subscription with frequency and first due date. Brazilian card instalment purchases -> installment with amount per instalment and installmentsTotal. One-off planned purchases -> purchase. Salaries/wages -> income (amount per pay cycle).',
+      'currency: "R$", "reais", "conta do Brasil" -> BRL; default AUD. owner default "shared"; if a partner is named, map to a/b. paidBy only for expenses when the payer is explicit.',
+      'Relative dates ("ontem", "sexta", "dia 15") resolve against today. If nothing extractable: {"records":[]}.',
+    ].join('\n')
+
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: parseSystem },
+          { role: 'user', content: text },
+        ],
+      }),
+    })
+    if (!res.ok) {
+      return jsonError(502, res.status === 401 ? 'invalid-openai-key' : 'upstream-error')
+    }
+    const data = await res.json()
+    const raw = data?.choices?.[0]?.message?.content ?? '{}'
+    try {
+      const parsed = JSON.parse(raw)
+      return new Response(JSON.stringify({ records: Array.isArray(parsed.records) ? parsed.records : [] }), {
+        headers: { 'content-type': 'application/json' },
+      })
+    } catch {
+      return jsonError(502, 'upstream-error')
+    }
   }
 
   const messages = (body.messages ?? [])
@@ -76,7 +128,7 @@ export default async function handler(req: Request): Promise<Response> {
     method: 'POST',
     headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
     body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      model,
       stream: true,
       messages: [{ role: 'system', content: systemPrompt(context, lang) }, ...messages],
     }),

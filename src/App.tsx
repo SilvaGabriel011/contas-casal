@@ -1,14 +1,20 @@
-import { useCallback, useState } from 'react'
-import type { Income, Item, Profile } from './types'
+import { useCallback, useEffect, useState } from 'react'
+import type { Expense, Income, Item, Profile } from './types'
 import { useAppData } from './data/DataProvider'
 import { useI18n } from './lib/i18n'
 import type { AiMessage } from './lib/ai'
+import { addDays, todayISO } from './lib/dates'
+import { buildOccurrences } from './lib/schedule'
 import { TabBar, type Tab } from './components/TabBar'
 import { AddSheet } from './components/AddSheet'
 import { Home } from './screens/Home'
 import { Items } from './screens/Items'
 import { IncomeScreen } from './screens/IncomeScreen'
-import { Settings } from './screens/Settings'
+import { More, type MenuEntry } from './screens/More'
+import { ExpensesScreen } from './screens/ExpensesScreen'
+import { SettleScreen } from './screens/SettleScreen'
+import { TransfersScreen } from './screens/TransfersScreen'
+import { ReportsScreen } from './screens/ReportsScreen'
 import { Welcome } from './screens/Welcome'
 import { AiChat } from './screens/AiChat'
 
@@ -48,9 +54,28 @@ function SaveErrorBanner() {
   )
 }
 
+// Overdue-bill count on the home-screen icon (installed PWAs, iOS 16.4+).
+function useAppBadge() {
+  const { snapshot } = useAppData()
+  useEffect(() => {
+    const nav = navigator as Navigator & {
+      setAppBadge?: (n?: number) => Promise<void>
+      clearAppBadge?: () => Promise<void>
+    }
+    if (!nav.setAppBadge) return
+    const today = todayISO()
+    const overdue = buildOccurrences(snapshot.items, snapshot.payments, addDays(today, -60), today).filter(
+      (o) => !o.payment && o.dueDate < today
+    ).length
+    if (overdue > 0) nav.setAppBadge(overdue).catch(() => {})
+    else nav.clearAppBadge?.().catch(() => {})
+  }, [snapshot])
+}
+
 function Shell() {
   const { mode } = useAppData()
   const [tab, setTab] = useState<Tab>('home')
+  useAppBadge()
   const [aiOpen, setAiOpen] = useState(false)
   const [aiMessages, setAiMessages] = useState<AiMessage[]>([])
   const [profile, setProfileState] = useState<Profile>(() => {
@@ -60,6 +85,7 @@ function Shell() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editItem, setEditItem] = useState<Item | null>(null)
   const [editIncome, setEditIncome] = useState<Income | null>(null)
+  const [editExpense, setEditExpense] = useState<Expense | null>(null)
 
   const setProfile = useCallback((p: Profile) => {
     localStorage.setItem(PROFILE_KEY, p)
@@ -69,20 +95,61 @@ function Shell() {
   const openAdd = useCallback(() => {
     setEditItem(null)
     setEditIncome(null)
+    setEditExpense(null)
     setSheetOpen(true)
   }, [])
 
   const openEditItem = useCallback((item: Item) => {
     setEditItem(item)
     setEditIncome(null)
+    setEditExpense(null)
     setSheetOpen(true)
   }, [])
 
   const openEditIncome = useCallback((income: Income) => {
     setEditIncome(income)
     setEditItem(null)
+    setEditExpense(null)
     setSheetOpen(true)
   }, [])
+
+  const openEditExpense = useCallback((expense: Expense) => {
+    setEditExpense(expense)
+    setEditItem(null)
+    setEditIncome(null)
+    setSheetOpen(true)
+  }, [])
+
+  const moreEntries: MenuEntry[] = [
+    {
+      view: 'expenses',
+      emoji: '☕',
+      labelKey: 'menuExpenses',
+      hintKey: 'menuExpensesHint',
+      render: () => <ExpensesScreen onEditExpense={openEditExpense} />,
+    },
+    {
+      view: 'settle',
+      emoji: '🤝',
+      labelKey: 'menuSettle',
+      hintKey: 'menuSettleHint',
+      render: () => <SettleScreen />,
+    },
+    {
+      view: 'transfers',
+      emoji: '✈️',
+      labelKey: 'menuTransfers',
+      hintKey: 'menuTransfersHint',
+      render: () => <TransfersScreen />,
+    },
+    {
+      view: 'charts',
+      emoji: '📊',
+      labelKey: 'menuCharts',
+      hintKey: 'menuChartsHint',
+      render: () => <ReportsScreen />,
+    },
+  ]
 
   return (
     <div className="min-h-dvh">
@@ -100,7 +167,7 @@ function Shell() {
           {tab === 'income' && (
             <IncomeScreen profile={profile} onProfile={setProfile} onEditIncome={openEditIncome} />
           )}
-          {tab === 'settings' && <Settings />}
+          {tab === 'more' && <More extraEntries={moreEntries} />}
         </div>
       </main>
 
@@ -112,6 +179,7 @@ function Shell() {
         onClose={() => setSheetOpen(false)}
         editItem={editItem}
         editIncome={editIncome}
+        editExpense={editExpense}
         defaultOwner={profile}
       />
 

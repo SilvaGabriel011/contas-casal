@@ -43,6 +43,34 @@ export interface Payment {
   dueDate: string
   paidAt: string
   amount: number
+  paidBy: 'a' | 'b' | null
+}
+
+export interface Expense {
+  id: string
+  date: string
+  amount: number
+  currency: Currency
+  category: string
+  owner: Owner
+  paidBy: 'a' | 'b' | null
+  note: string | null
+  createdAt: string
+}
+
+export interface Budget {
+  amount: number
+  currency: Currency
+}
+
+export interface Transfer {
+  id: string
+  date: string
+  audSent: number
+  brlReceived: number
+  feeAud: number | null
+  note: string | null
+  createdAt: string
 }
 
 export interface CustomCategory {
@@ -55,12 +83,16 @@ export interface HouseholdSettings {
   nameA: string
   nameB: string
   customCategories: CustomCategory[]
+  budgets?: Record<string, Budget>
+  settledMonths?: string[]
 }
 
 export interface Snapshot {
   items: Item[]
   incomes: Income[]
   payments: Payment[]
+  expenses: Expense[]
+  transfers: Transfer[]
   settings: HouseholdSettings
 }
 

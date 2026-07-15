@@ -73,6 +73,55 @@ export function buildAiContext(
 
 export type AiError = 'missing-openai-key' | 'unauthorized' | 'invalid-openai-key' | 'unavailable' | 'generic'
 
+export interface QuickDraft {
+  type: 'expense' | 'bill' | 'subscription' | 'installment' | 'purchase' | 'income'
+  name?: string
+  note?: string
+  amount: number
+  currency: 'AUD' | 'BRL'
+  category?: string
+  owner?: 'a' | 'b' | 'shared'
+  paidBy?: 'a' | 'b'
+  date?: string
+  frequency?: string
+  installmentsTotal?: number
+}
+
+const DRAFT_TYPES = new Set(['expense', 'bill', 'subscription', 'installment', 'purchase', 'income'])
+
+export async function parseQuickAdd(
+  text: string,
+  meta: { today: string; nameA: string; nameB: string; categories: string[] },
+  lang: string,
+  accessToken: string
+): Promise<QuickDraft[]> {
+  const res = await fetch('/api/ai', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ mode: 'parse', text, meta, lang }),
+  })
+  if (!res.ok) {
+    if (res.status === 404) throw new Error('unavailable' satisfies AiError)
+    const code = await res
+      .json()
+      .then((j) => j?.error)
+      .catch(() => null)
+    throw new Error((code as AiError) || ('generic' satisfies AiError))
+  }
+  const data = await res.json()
+  const records: unknown[] = Array.isArray(data?.records) ? data.records : []
+  return records.filter((r): r is QuickDraft => {
+    const d = r as QuickDraft
+    return (
+      DRAFT_TYPES.has(d?.type) &&
+      typeof d.amount === 'number' &&
+      Number.isFinite(d.amount) &&
+      d.amount > 0 &&
+      (d.currency === 'AUD' || d.currency === 'BRL')
+    )
+  })
+}
+
 export async function* streamAiChat(
   messages: AiMessage[],
   context: string,

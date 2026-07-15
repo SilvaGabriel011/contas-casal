@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
-import type { Currency, Frequency, Income, IncomeFrequency, Item, ItemKind, Owner } from '../types'
+import type { Currency, Expense, Frequency, Income, IncomeFrequency, Item, ItemKind, Owner } from '../types'
+import { getDeviceOwner } from '../lib/device'
 import { CATEGORIES } from '../types'
 import { useAppData } from '../data/DataProvider'
 import { useI18n, type TKey } from '../lib/i18n'
-import { CAT_KEY, categoryEmoji, categoryLabel } from '../lib/categories'
+import { CAT_KEY, categoryEmoji } from '../lib/categories'
+import { AiQuickAdd } from './AiQuickAdd'
 import { FREQ_EVERY, ITEM_KINDS, KIND_CONFIG } from '../lib/kinds'
 import { formatAmountInput, formatMoney, parseAmount } from '../lib/money'
 import { hourlyPerCycle } from '../lib/schedule'
@@ -12,24 +14,35 @@ import { formatDay } from '../lib/i18n'
 import { todayISO } from '../lib/dates'
 import { Chip, Field, inputCls, Segmented, Sheet } from './ui'
 
-type FormKind = ItemKind | 'income'
+type FormKind = ItemKind | 'income' | 'expense'
 
 export function AddSheet({
   open,
   onClose,
   editItem,
   editIncome,
+  editExpense,
   defaultOwner,
 }: {
   open: boolean
   onClose: () => void
   editItem?: Item | null
   editIncome?: Income | null
+  editExpense?: Expense | null
   defaultOwner: Owner
 }) {
-  const { snapshot, upsertItem, deleteItem, upsertIncome, deleteIncome, saveSettings } = useAppData()
+  const {
+    snapshot,
+    upsertItem,
+    deleteItem,
+    upsertIncome,
+    deleteIncome,
+    upsertExpense,
+    deleteExpense,
+    saveSettings,
+  } = useAppData()
   const { t, lang, locale, decimalSep } = useI18n()
-  const editing = Boolean(editItem || editIncome)
+  const editing = Boolean(editItem || editIncome || editExpense)
 
   const [kind, setKind] = useState<FormKind>('bill')
   const [name, setName] = useState('')
@@ -43,10 +56,12 @@ export function AddSheet({
   const [notes, setNotes] = useState('')
   const [incomeActive, setIncomeActive] = useState(true)
   const [basis, setBasis] = useState<'fixed' | 'hourly'>('fixed')
+  const [paidBy, setPaidBy] = useState<'a' | 'b'>('a')
   const [rateRaw, setRateRaw] = useState('')
   const [hoursPerDay, setHoursPerDay] = useState('8')
   const [daysPerWeek, setDaysPerWeek] = useState('5')
   const [error, setError] = useState('')
+  const [stepIdx, setStepIdx] = useState(0)
   const [newCatOpen, setNewCatOpen] = useState(false)
   const [newCatEmoji, setNewCatEmoji] = useState('')
   const [newCatName, setNewCatName] = useState('')
@@ -54,6 +69,7 @@ export function AddSheet({
   useEffect(() => {
     if (!open) return
     setError('')
+    setStepIdx(0)
     setNewCatOpen(false)
     setNewCatEmoji('')
     setNewCatName('')
@@ -82,6 +98,16 @@ export function AddSheet({
       setRateRaw(editIncome.hourlyRate ? formatAmountInput(editIncome.hourlyRate, decimalSep) : '')
       setHoursPerDay(String(editIncome.hoursPerDay ?? 8))
       setDaysPerWeek(String(editIncome.daysPerWeek ?? 5))
+    } else if (editExpense) {
+      setKind('expense')
+      setName('')
+      setAmountRaw(formatAmountInput(editExpense.amount, decimalSep))
+      setCurrency(editExpense.currency)
+      setOwner(editExpense.owner)
+      setCategory(editExpense.category)
+      setStartDate(editExpense.date)
+      setNotes(editExpense.note ?? '')
+      setPaidBy(editExpense.paidBy ?? getDeviceOwner() ?? 'a')
     } else {
       setKind('bill')
       setName('')
@@ -98,14 +124,20 @@ export function AddSheet({
       setRateRaw('')
       setHoursPerDay('8')
       setDaysPerWeek('5')
+      setPaidBy(getDeviceOwner() ?? 'a')
     }
-  }, [open, editItem, editIncome, defaultOwner, decimalSep])
+  }, [open, editItem, editIncome, editExpense, defaultOwner, decimalSep])
 
   const setKindPreset = (k: FormKind) => {
     setKind(k)
     if (k === 'income') {
       setFrequency('fortnightly')
       if (owner === 'shared') setOwner('a')
+      return
+    }
+    if (k === 'expense') {
+      setCategory('groceries')
+      setStartDate(todayISO())
       return
     }
     const cfg = KIND_CONFIG[k]
@@ -143,10 +175,28 @@ export function AddSheet({
   }
 
   const save = async () => {
-    if (!name.trim()) return setError(t('fillName'))
+    if (kind !== 'expense' && !name.trim()) return setError(t('fillName'))
     if (editItem && !snapshot.items.some((i) => i.id === editItem.id)) return setError(t('deletedElsewhere'))
     if (editIncome && !snapshot.incomes.some((i) => i.id === editIncome.id))
       return setError(t('deletedElsewhere'))
+    if (editExpense && !snapshot.expenses.some((e) => e.id === editExpense.id))
+      return setError(t('deletedElsewhere'))
+
+    if (kind === 'expense') {
+      if (amount === null || amount <= 0) return setError(t('invalidAmount'))
+      await upsertExpense({
+        id: editExpense?.id ?? crypto.randomUUID(),
+        date: startDate,
+        amount,
+        currency,
+        category,
+        owner,
+        paidBy,
+        note: notes.trim() || null,
+        createdAt: editExpense?.createdAt ?? new Date().toISOString(),
+      })
+      return onClose()
+    }
 
     if (kind === 'income') {
       const cycleAmount = isHourlyIncome ? cyclePay : amount
@@ -192,6 +242,7 @@ export function AddSheet({
     if (!confirm(t('deleteConfirm'))) return
     if (editItem) await deleteItem(editItem.id)
     if (editIncome) await deleteIncome(editIncome.id)
+    if (editExpense) await deleteExpense(editExpense.id)
     onClose()
   }
 
@@ -217,30 +268,90 @@ export function AddSheet({
     ...(kind === 'income' ? [] : [{ value: 'shared' as Owner, label: t('couple') }]),
   ]
 
-  const kindConfig = kind === 'income' ? null : KIND_CONFIG[kind]
-  const showFrequency = !kindConfig?.forcedFrequency
+  const kindConfig = kind === 'income' || kind === 'expense' ? null : KIND_CONFIG[kind]
+  const showFrequency = kind !== 'expense' && !kindConfig?.forcedFrequency
   const dateLabel =
     kind === 'income'
       ? t('nextPayDate')
-      : frequency === 'once' && kind !== 'purchase'
-        ? t('dueDate')
-        : t(KIND_CONFIG[kind].dateLabelKey)
+      : kind === 'expense'
+        ? t('expenseDate')
+        : frequency === 'once' && kind !== 'purchase'
+          ? t('dueDate')
+          : t(KIND_CONFIG[kind].dateLabelKey)
+
+  // Wizard: what -> value -> details -> extras (income has no extras step).
+  type WizardStep = 'what' | 'value' | 'details' | 'extras'
+  const steps: WizardStep[] = [
+    ...(editing ? [] : (['what'] as WizardStep[])),
+    'value',
+    'details',
+    ...(kind === 'income' ? [] : (['extras'] as WizardStep[])),
+  ]
+  const step = steps[Math.min(stepIdx, steps.length - 1)]
+  const stepTitle: Record<WizardStep, TKey> = {
+    what: 'stepWhat',
+    value: 'stepValue',
+    details: 'stepDetails',
+    extras: 'stepExtras',
+  }
+
+  const validateStep = (s: WizardStep): string | null => {
+    if (s === 'value') {
+      if (isHourlyIncome) {
+        if (cyclePay === null || cyclePay <= 0) return t('invalidAmount')
+      } else if (amount === null || amount <= 0) {
+        return t('invalidAmount')
+      }
+    }
+    if (s === 'details' && kind !== 'expense' && !name.trim()) return t('fillName')
+    return null
+  }
+
+  const nextStep = () => {
+    const err = validateStep(step)
+    if (err) return setError(err)
+    setError('')
+    if (stepIdx >= steps.length - 1) save()
+    else setStepIdx(stepIdx + 1)
+  }
+
+  const prevStep = () => {
+    setError('')
+    setStepIdx(Math.max(0, stepIdx - 1))
+  }
 
   return (
     <Sheet open={open} onClose={onClose} title={editing ? t('editTitle') : t('addTitle')}>
       <div className="space-y-4 pb-4">
-        {!editing && (
-          <>
+        <div className="flex items-center gap-2">
+          <div className="flex flex-1 gap-1.5">
+            {steps.map((s, i) => (
+              <span
+                key={s}
+                className={`h-1.5 flex-1 rounded-full transition-colors ${
+                  i <= stepIdx ? 'grad-accent' : 'bg-card2'
+                }`}
+              />
+            ))}
+          </div>
+          <span className="text-[12px] font-bold text-ink2">
+            {t('stepOf', { a: stepIdx + 1, b: steps.length })} · {t(stepTitle[step])}
+          </span>
+        </div>
+
+        {step === 'what' && (
+          <div className="anim-rise space-y-4">
             <Segmented
               options={[
-                { value: 'expense', label: `💸 ${t('expense')}` },
+                { value: 'bill', label: `🧾 ${t('bill')}` },
+                { value: 'expense', label: `☕ ${t('quickExpense')}` },
                 { value: 'income', label: `💰 ${t('income')}` },
               ]}
-              value={kind === 'income' ? 'income' : 'expense'}
-              onChange={(v) => setKindPreset(v === 'income' ? 'income' : 'bill')}
+              value={kind === 'income' ? 'income' : kind === 'expense' ? 'expense' : 'bill'}
+              onChange={(v) => setKindPreset(v as FormKind)}
             />
 
-            {kind !== 'income' && (
+            {kind !== 'income' && kind !== 'expense' && (
               <div className="grid grid-cols-2 gap-2">
                 {ITEM_KINDS.map((k) => (
                   <button
@@ -257,18 +368,13 @@ export function AddSheet({
                 ))}
               </div>
             )}
-          </>
+
+            <AiQuickAdd onDone={onClose} />
+          </div>
         )}
 
-        <Field label={t('name')}>
-          <input
-            className={inputCls}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={kind === 'income' ? t('incomeNamePlaceholder') : t('namePlaceholder')}
-          />
-        </Field>
-
+        {step === 'value' && (
+          <div className="anim-rise space-y-4">
         {kind === 'income' && (
           <Field label={t('payBasis')}>
             <Segmented
@@ -363,6 +469,21 @@ export function AddSheet({
             </div>
           </div>
         )}
+          </div>
+        )}
+
+        {step === 'details' && (
+          <div className="anim-rise space-y-4">
+        {kind !== 'expense' && (
+          <Field label={t('name')}>
+            <input
+              className={inputCls}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={kind === 'income' ? t('incomeNamePlaceholder') : t('namePlaceholder')}
+            />
+          </Field>
+        )}
 
         <Field label={t('owner')}>
           <div className="flex gap-2">
@@ -373,6 +494,19 @@ export function AddSheet({
             ))}
           </div>
         </Field>
+
+        {kind === 'expense' && (
+          <Field label={t('paidByLabel')}>
+            <Segmented
+              options={[
+                { value: 'a', label: snapshot.settings.nameA },
+                { value: 'b', label: snapshot.settings.nameB },
+              ]}
+              value={paidBy}
+              onChange={setPaidBy}
+            />
+          </Field>
+        )}
 
         {kind === 'income' ? (
           <>
@@ -418,9 +552,11 @@ export function AddSheet({
             onChange={(e) => e.target.value && setStartDate(e.target.value)}
           />
         </Field>
+          </div>
+        )}
 
-        {kind !== 'income' && (
-          <>
+        {step === 'extras' && kind !== 'income' && (
+          <div className="anim-rise space-y-4">
             <Field label={t('category')}>
               <div className="flex flex-wrap gap-2">
                 {CATEGORIES.map((c) => (
@@ -482,21 +618,16 @@ export function AddSheet({
                 placeholder={t('notesPlaceholder')}
               />
             </Field>
-          </>
+          </div>
         )}
 
-        {editing && editItem && (
-          <>
-            <button
-              onClick={exportReminder}
-              className="press w-full rounded-2xl border border-line bg-card2 py-3 text-[14px] font-semibold text-ink"
-            >
-              📅 {t('calendarAdd')}
-            </button>
-            <p className="text-[13px] font-semibold text-ink2">
-              {categoryLabel(category, snapshot.settings, t)} · {t(kind as TKey)}
-            </p>
-          </>
+        {editing && editItem && step === 'details' && (
+          <button
+            onClick={exportReminder}
+            className="press w-full rounded-2xl border border-line bg-card2 py-3 text-[14px] font-semibold text-ink"
+          >
+            📅 {t('calendarAdd')}
+          </button>
         )}
 
         {error && <p className="text-sm font-semibold text-bad">{error}</p>}
@@ -505,16 +636,24 @@ export function AddSheet({
           {editing && (
             <button
               onClick={remove}
-              className="press rounded-2xl border border-line px-5 py-3.5 text-[15px] font-bold text-bad"
+              className="press rounded-2xl border border-line px-4 py-3.5 text-[15px] font-bold text-bad"
             >
               {t('delete')}
             </button>
           )}
+          {stepIdx > 0 && (
+            <button
+              onClick={prevStep}
+              className="press rounded-2xl border border-line px-5 py-3.5 text-[15px] font-bold text-ink2"
+            >
+              ← {t('back')}
+            </button>
+          )}
           <button
-            onClick={save}
+            onClick={nextStep}
             className="press grad-accent flex-1 rounded-2xl py-3.5 text-[15px] font-bold text-white shadow-md"
           >
-            {t('save')}
+            {stepIdx >= steps.length - 1 ? t('save') : `${t('continueBtn')} →`}
           </button>
         </div>
       </div>

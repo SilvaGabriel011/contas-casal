@@ -18,6 +18,8 @@
   --brl-a: #059450;
   --brl-b: #b7950b;
   --glass: rgba(248, 249, 251, 0.82);
+  --chart-1: #6d5cf6;
+  --chart-2: #0d9488;
 }
 
 .dark {
@@ -36,6 +38,8 @@
   --brl-a: #10b981;
   --brl-b: #d4b106;
   --glass: rgba(13, 16, 22, 0.8);
+  --chart-1: #8d7bff;
+  --chart-2: #10a894;
 }
 
 @theme inline {

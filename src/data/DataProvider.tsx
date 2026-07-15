@@ -8,7 +8,8 @@ import {
   type ReactNode,
 } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { HouseholdSettings, Income, Item, Payment, Snapshot } from '../types'
+import type { Expense, HouseholdSettings, Income, Item, Payment, Snapshot, Transfer } from '../types'
+import { getDeviceOwner } from '../lib/device'
 import {
   fetchRemoteConfig,
   getCloudConfig,
@@ -47,7 +48,12 @@ interface AppData {
   upsertIncome: (income: Income) => Promise<void>
   deleteIncome: (id: string) => Promise<void>
   setPaid: (item: Item, dueDate: string, paid: boolean) => Promise<void>
+  upsertExpense: (expense: Expense) => Promise<void>
+  deleteExpense: (id: string) => Promise<void>
+  upsertTransfer: (transfer: Transfer) => Promise<void>
+  deleteTransfer: (id: string) => Promise<void>
   saveSettings: (settings: HouseholdSettings) => Promise<void>
+  importSnapshot: (snapshot: Snapshot) => Promise<boolean>
   resetDemo: () => void
 }
 
@@ -387,9 +393,32 @@ export function DataProvider({ children }: { children: ReactNode }) {
         dueDate,
         paidAt: new Date().toISOString(),
         amount: item.amount,
+        paidBy: getDeviceOwner(),
       }
       return mutate((s) => reduce.putPayment(s, payment), (a) => a.addPayment(payment))
     },
+    [mutate]
+  )
+
+  const upsertExpense = useCallback(
+    (expense: Expense) =>
+      mutate((s) => reduce.upsertExpense(s, expense), (a) => a.upsertExpense(expense)),
+    [mutate]
+  )
+
+  const deleteExpense = useCallback(
+    (id: string) => mutate((s) => reduce.deleteExpense(s, id), (a) => a.deleteExpense(id)),
+    [mutate]
+  )
+
+  const upsertTransfer = useCallback(
+    (transfer: Transfer) =>
+      mutate((s) => reduce.upsertTransfer(s, transfer), (a) => a.upsertTransfer(transfer)),
+    [mutate]
+  )
+
+  const deleteTransfer = useCallback(
+    (id: string) => mutate((s) => reduce.deleteTransfer(s, id), (a) => a.deleteTransfer(id)),
     [mutate]
   )
 
@@ -397,6 +426,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
     (settings: HouseholdSettings) =>
       mutate((s) => reduce.putSettings(s, settings), (a) => a.saveSettings(settings)),
     [mutate]
+  )
+
+  const importSnapshot = useCallback(
+    async (imported: Snapshot): Promise<boolean> => {
+      const adapter = adapterRef.current
+      if (!adapter) return false
+      try {
+        await adapter.replaceAll(imported)
+        await refetch()
+        return true
+      } catch {
+        await refetch()
+        setSaveError(true)
+        return false
+      }
+    },
+    [refetch]
   )
 
   const resetDemo = useCallback(() => {
@@ -426,7 +472,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     upsertIncome,
     deleteIncome,
     setPaid,
+    upsertExpense,
+    deleteExpense,
+    upsertTransfer,
+    deleteTransfer,
     saveSettings,
+    importSnapshot,
     resetDemo,
   }
 

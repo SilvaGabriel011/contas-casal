@@ -64,7 +64,10 @@ function snapshotWith(paymentCount: number): Snapshot {
       dueDate: addDays(today, -(i % 300)),
       paidAt: '2026-07-01T00:00:00Z',
       amount: 620,
+      paidBy: null,
     })),
+    expenses: [],
+    transfers: [],
   }
 }
 

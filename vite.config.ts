@@ -22,7 +22,7 @@ function cspMeta(): Plugin {
           `script-src 'self' ${hashes.join(' ')}`.trim(),
           "style-src 'self' 'unsafe-inline'",
           "img-src 'self' data:",
-          "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+          "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.frankfurter.dev",
           "manifest-src 'self'",
           "worker-src 'self'",
           "object-src 'none'",

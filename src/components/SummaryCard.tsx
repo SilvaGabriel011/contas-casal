@@ -10,16 +10,18 @@ export function SummaryCard({
   totalMonth,
   paidMonth,
   incomeMonth,
+  expensesMonth = 0,
 }: {
   currency: Currency
   monthLabel: string
   totalMonth: number
   paidMonth: number
   incomeMonth: number
+  expensesMonth?: number
 }) {
   const { t, locale } = useI18n()
   const remaining = Math.max(0, totalMonth - paidMonth)
-  const leftover = incomeMonth - totalMonth
+  const leftover = incomeMonth - totalMonth - expensesMonth
   const animatedTotal = useCountUp(totalMonth)
 
   return (
@@ -59,15 +61,24 @@ export function SummaryCard({
         )}
       </div>
 
-      {incomeMonth > 0 && (
-        <div className="num mt-4 flex gap-3 border-t border-white/25 pt-3 text-[12px] font-semibold">
-          <span className="rounded-full bg-white/18 px-2.5 py-1">
-            💵 {formatMoneyShort(incomeMonth, currency, locale)} {t('incomePerMonth')}
-          </span>
-          <span className={`rounded-full px-2.5 py-1 ${leftover >= 0 ? 'bg-white/18' : 'bg-black/25'}`}>
-            {leftover >= 0 ? '🌱' : '⚠️'} {formatMoneyShort(leftover, currency, locale)}{' '}
-            {t('leftoverEstimate')}
-          </span>
+      {(incomeMonth > 0 || expensesMonth > 0) && (
+        <div className="num mt-4 flex flex-wrap gap-2 border-t border-white/25 pt-3 text-[12px] font-semibold">
+          {incomeMonth > 0 && (
+            <span className="rounded-full bg-white/18 px-2.5 py-1">
+              💵 {formatMoneyShort(incomeMonth, currency, locale)} {t('incomePerMonth')}
+            </span>
+          )}
+          {expensesMonth > 0 && (
+            <span className="rounded-full bg-white/18 px-2.5 py-1">
+              ☕ {formatMoneyShort(expensesMonth, currency, locale)} {t('spendingShort')}
+            </span>
+          )}
+          {incomeMonth > 0 && (
+            <span className={`rounded-full px-2.5 py-1 ${leftover >= 0 ? 'bg-white/18' : 'bg-black/25'}`}>
+              {leftover >= 0 ? '🌱' : '⚠️'} {formatMoneyShort(leftover, currency, locale)}{' '}
+              {t('leftoverEstimate')}
+            </span>
+          )}
         </div>
       )}
     </div>
