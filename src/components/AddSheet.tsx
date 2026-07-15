@@ -4,7 +4,8 @@ import { getDeviceOwner } from '../lib/device'
 import { CATEGORIES } from '../types'
 import { useAppData } from '../data/DataProvider'
 import { useI18n, type TKey } from '../lib/i18n'
-import { CAT_KEY, categoryEmoji, categoryLabel } from '../lib/categories'
+import { CAT_KEY, categoryEmoji } from '../lib/categories'
+import { AiQuickAdd } from './AiQuickAdd'
 import { FREQ_EVERY, ITEM_KINDS, KIND_CONFIG } from '../lib/kinds'
 import { formatAmountInput, formatMoney, parseAmount } from '../lib/money'
 import { hourlyPerCycle } from '../lib/schedule'
@@ -60,6 +61,7 @@ export function AddSheet({
   const [hoursPerDay, setHoursPerDay] = useState('8')
   const [daysPerWeek, setDaysPerWeek] = useState('5')
   const [error, setError] = useState('')
+  const [stepIdx, setStepIdx] = useState(0)
   const [newCatOpen, setNewCatOpen] = useState(false)
   const [newCatEmoji, setNewCatEmoji] = useState('')
   const [newCatName, setNewCatName] = useState('')
@@ -67,6 +69,7 @@ export function AddSheet({
   useEffect(() => {
     if (!open) return
     setError('')
+    setStepIdx(0)
     setNewCatOpen(false)
     setNewCatEmoji('')
     setNewCatName('')
@@ -276,11 +279,68 @@ export function AddSheet({
           ? t('dueDate')
           : t(KIND_CONFIG[kind].dateLabelKey)
 
+  // Wizard: what -> value -> details -> extras (income has no extras step).
+  type WizardStep = 'what' | 'value' | 'details' | 'extras'
+  const steps: WizardStep[] = [
+    ...(editing ? [] : (['what'] as WizardStep[])),
+    'value',
+    'details',
+    ...(kind === 'income' ? [] : (['extras'] as WizardStep[])),
+  ]
+  const step = steps[Math.min(stepIdx, steps.length - 1)]
+  const stepTitle: Record<WizardStep, TKey> = {
+    what: 'stepWhat',
+    value: 'stepValue',
+    details: 'stepDetails',
+    extras: 'stepExtras',
+  }
+
+  const validateStep = (s: WizardStep): string | null => {
+    if (s === 'value') {
+      if (isHourlyIncome) {
+        if (cyclePay === null || cyclePay <= 0) return t('invalidAmount')
+      } else if (amount === null || amount <= 0) {
+        return t('invalidAmount')
+      }
+    }
+    if (s === 'details' && kind !== 'expense' && !name.trim()) return t('fillName')
+    return null
+  }
+
+  const nextStep = () => {
+    const err = validateStep(step)
+    if (err) return setError(err)
+    setError('')
+    if (stepIdx >= steps.length - 1) save()
+    else setStepIdx(stepIdx + 1)
+  }
+
+  const prevStep = () => {
+    setError('')
+    setStepIdx(Math.max(0, stepIdx - 1))
+  }
+
   return (
     <Sheet open={open} onClose={onClose} title={editing ? t('editTitle') : t('addTitle')}>
       <div className="space-y-4 pb-4">
-        {!editing && (
-          <>
+        <div className="flex items-center gap-2">
+          <div className="flex flex-1 gap-1.5">
+            {steps.map((s, i) => (
+              <span
+                key={s}
+                className={`h-1.5 flex-1 rounded-full transition-colors ${
+                  i <= stepIdx ? 'grad-accent' : 'bg-card2'
+                }`}
+              />
+            ))}
+          </div>
+          <span className="text-[12px] font-bold text-ink2">
+            {t('stepOf', { a: stepIdx + 1, b: steps.length })} · {t(stepTitle[step])}
+          </span>
+        </div>
+
+        {step === 'what' && (
+          <div className="anim-rise space-y-4">
             <Segmented
               options={[
                 { value: 'bill', label: `🧾 ${t('bill')}` },
@@ -308,20 +368,13 @@ export function AddSheet({
                 ))}
               </div>
             )}
-          </>
+
+            <AiQuickAdd onDone={onClose} />
+          </div>
         )}
 
-        {kind !== 'expense' && (
-          <Field label={t('name')}>
-            <input
-              className={inputCls}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={kind === 'income' ? t('incomeNamePlaceholder') : t('namePlaceholder')}
-            />
-          </Field>
-        )}
-
+        {step === 'value' && (
+          <div className="anim-rise space-y-4">
         {kind === 'income' && (
           <Field label={t('payBasis')}>
             <Segmented
@@ -416,6 +469,21 @@ export function AddSheet({
             </div>
           </div>
         )}
+          </div>
+        )}
+
+        {step === 'details' && (
+          <div className="anim-rise space-y-4">
+        {kind !== 'expense' && (
+          <Field label={t('name')}>
+            <input
+              className={inputCls}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={kind === 'income' ? t('incomeNamePlaceholder') : t('namePlaceholder')}
+            />
+          </Field>
+        )}
 
         <Field label={t('owner')}>
           <div className="flex gap-2">
@@ -484,9 +552,11 @@ export function AddSheet({
             onChange={(e) => e.target.value && setStartDate(e.target.value)}
           />
         </Field>
+          </div>
+        )}
 
-        {kind !== 'income' && (
-          <>
+        {step === 'extras' && kind !== 'income' && (
+          <div className="anim-rise space-y-4">
             <Field label={t('category')}>
               <div className="flex flex-wrap gap-2">
                 {CATEGORIES.map((c) => (
@@ -548,21 +618,16 @@ export function AddSheet({
                 placeholder={t('notesPlaceholder')}
               />
             </Field>
-          </>
+          </div>
         )}
 
-        {editing && editItem && (
-          <>
-            <button
-              onClick={exportReminder}
-              className="press w-full rounded-2xl border border-line bg-card2 py-3 text-[14px] font-semibold text-ink"
-            >
-              📅 {t('calendarAdd')}
-            </button>
-            <p className="text-[13px] font-semibold text-ink2">
-              {categoryLabel(category, snapshot.settings, t)} · {t(kind as TKey)}
-            </p>
-          </>
+        {editing && editItem && step === 'details' && (
+          <button
+            onClick={exportReminder}
+            className="press w-full rounded-2xl border border-line bg-card2 py-3 text-[14px] font-semibold text-ink"
+          >
+            📅 {t('calendarAdd')}
+          </button>
         )}
 
         {error && <p className="text-sm font-semibold text-bad">{error}</p>}
@@ -571,16 +636,24 @@ export function AddSheet({
           {editing && (
             <button
               onClick={remove}
-              className="press rounded-2xl border border-line px-5 py-3.5 text-[15px] font-bold text-bad"
+              className="press rounded-2xl border border-line px-4 py-3.5 text-[15px] font-bold text-bad"
             >
               {t('delete')}
             </button>
           )}
+          {stepIdx > 0 && (
+            <button
+              onClick={prevStep}
+              className="press rounded-2xl border border-line px-5 py-3.5 text-[15px] font-bold text-ink2"
+            >
+              ← {t('back')}
+            </button>
+          )}
           <button
-            onClick={save}
+            onClick={nextStep}
             className="press grad-accent flex-1 rounded-2xl py-3.5 text-[15px] font-bold text-white shadow-md"
           >
-            {t('save')}
+            {stepIdx >= steps.length - 1 ? t('save') : `${t('continueBtn')} →`}
           </button>
         </div>
       </div>

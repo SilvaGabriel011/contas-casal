@@ -27,7 +27,8 @@ export function ExpensesScreen({ onEditExpense }: { onEditExpense: (e: Expense) 
 
   const monthLabel = useMemo(() => {
     const [y, m] = month.split('-').map(Number)
-    return new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(new Date(y, m - 1, 1))
+    const label = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(new Date(y, m - 1, 1))
+    return label.charAt(0).toUpperCase() + label.slice(1)
   }, [month, locale])
 
   const byDay = useMemo(() => {
@@ -74,7 +75,7 @@ export function ExpensesScreen({ onEditExpense }: { onEditExpense: (e: Expense) 
         <button onClick={() => setMonth(shiftMonth(month, -1))} className="press px-3 py-1 text-lg font-bold text-ink2">
           ‹
         </button>
-        <span className="text-[14px] font-bold text-ink capitalize">{monthLabel}</span>
+        <span className="text-[14px] font-bold text-ink">{monthLabel}</span>
         <button onClick={() => setMonth(shiftMonth(month, 1))} className="press px-3 py-1 text-lg font-bold text-ink2">
           ›
         </button>
