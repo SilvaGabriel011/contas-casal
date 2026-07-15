@@ -17,6 +17,7 @@ import { SettleScreen } from './screens/SettleScreen'
 import { TransfersScreen } from './screens/TransfersScreen'
 import { ReportsScreen } from './screens/ReportsScreen'
 import { GoalsScreen } from './screens/GoalsScreen'
+import { VaultScreen } from './screens/VaultScreen'
 import { TaxScreen } from './screens/TaxScreen'
 import { ReconcileScreen } from './screens/ReconcileScreen'
 import { WrappedScreen } from './screens/WrappedScreen'
@@ -208,6 +209,13 @@ function Shell() {
       labelKey: 'menuCharts',
       hintKey: 'menuChartsHint',
       render: () => <ReportsScreen />,
+    },
+    {
+      view: 'vault',
+      emoji: '🔐',
+      labelKey: 'menuVault',
+      hintKey: 'menuVaultHint',
+      render: () => <VaultScreen />,
     },
     {
       view: 'goals',

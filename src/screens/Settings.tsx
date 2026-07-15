@@ -489,6 +489,12 @@ export function Settings() {
             </div>
           </>
         )}
+        <p className="num border-t border-line pt-3 text-[12px] text-ink2">
+          {t('diagBuild')}: <span className="font-bold">{__BUILD_SHA__}</span> ·{' '}
+          {new Intl.DateTimeFormat(locale, { dateStyle: 'short', timeStyle: 'short' }).format(
+            new Date(__BUILD_TIME__)
+          )}
+        </p>
       </section>
 
       <p className="pb-2 text-center text-[12px] text-ink2">{t('about')}</p>

@@ -79,6 +79,23 @@ export interface CustomCategory {
   label: string
 }
 
+// A "caixinha": where stashed money actually sits (per currency).
+export interface VaultBox {
+  id: string
+  emoji: string
+  name: string
+  currency: Currency
+  amount: number
+  createdAt: string
+}
+
+export interface VaultData {
+  boxes: VaultBox[]
+  // How much was stashed per month/currency — lets the "you can save Y this
+  // month" nudge stop nagging once the couple already saved it.
+  savedByMonth: Record<string, Partial<Record<Currency, number>>>
+}
+
 export interface SavingsGoal {
   id: string
   emoji: string
@@ -100,6 +117,7 @@ export interface HouseholdSettings {
   goals?: SavingsGoal[]
   taxCategories?: string[]
   notifyEmails?: string[]
+  vault?: VaultData
 }
 
 export interface Snapshot {
