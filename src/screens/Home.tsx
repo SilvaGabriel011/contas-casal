@@ -5,6 +5,7 @@ import { useI18n, formatDay } from '../lib/i18n'
 import { formatMoneyShort } from '../lib/money'
 import { addDays, daysBetween, endOfMonth, startOfMonth, todayISO } from '../lib/dates'
 import { buildOccurrences, monthlyEquivalent, nextPayday, visibleToProfile } from '../lib/schedule'
+import { expensesFor, monthOf, totalsByCurrency } from '../lib/expenses'
 import { personName } from '../lib/owners'
 import { ProfileSwitcher } from '../components/ProfileSwitcher'
 import { SummaryCard } from '../components/SummaryCard'
@@ -45,12 +46,18 @@ export function Home({
     [items, snapshot.payments, today]
   )
 
+  const monthExpenses = useMemo(
+    () => totalsByCurrency(expensesFor(snapshot.expenses, monthOf(today), profile)),
+    [snapshot.expenses, today, profile]
+  )
+
   const currencies = useMemo(() => {
     const set = new Set<Currency>()
     items.forEach((i) => set.add(i.currency))
     incomes.forEach((i) => set.add(i.currency))
+    for (const c of ['AUD', 'BRL'] as Currency[]) if (monthExpenses[c]) set.add(c)
     return (['AUD', 'BRL'] as Currency[]).filter((c) => set.has(c))
-  }, [items, incomes])
+  }, [items, incomes, monthExpenses])
 
   const summaries = currencies.map((currency) => {
     const occs = monthOccs.filter((o) => o.item.currency === currency)
@@ -59,7 +66,7 @@ export function Home({
     const incomeMonth = incomes
       .filter((i) => i.currency === currency)
       .reduce((s, i) => s + monthlyEquivalent(i.amount, i.frequency), 0)
-    return { currency, totalMonth, paidMonth, incomeMonth }
+    return { currency, totalMonth, paidMonth, incomeMonth, expensesMonth: monthExpenses[currency] ?? 0 }
   })
 
   const payday = nextPayday(incomes, today)
@@ -126,6 +133,7 @@ export function Home({
                   totalMonth={s.totalMonth}
                   paidMonth={s.paidMonth}
                   incomeMonth={s.incomeMonth}
+                  expensesMonth={s.expensesMonth}
                 />
               </div>
             ))}

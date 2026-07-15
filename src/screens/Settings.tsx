@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAppData } from '../data/DataProvider'
+import { getDeviceOwner, setDeviceOwner } from '../lib/device'
 import { useI18n, formatDay, type Lang } from '../lib/i18n'
 import { useTheme, type Theme } from '../lib/theme'
 import { formatMoney } from '../lib/money'
@@ -29,6 +30,7 @@ export function Settings() {
   const [dirty, setDirty] = useState(false)
   const [feedToken, setFeedToken] = useState<string | null | undefined>(undefined)
   const [copied, setCopied] = useState(false)
+  const [deviceOwner, setDeviceOwnerState] = useState<'a' | 'b' | null>(getDeviceOwner)
 
   // Sync remote name changes in, but never while the user is mid-edit.
   useEffect(() => {
@@ -169,6 +171,20 @@ export function Settings() {
             }}
             onBlur={persistNames}
           />
+        </Field>
+        <Field label={`📱 ${t('deviceOwnerLabel')}`}>
+          <Segmented
+            options={[
+              { value: 'a', label: snapshot.settings.nameA },
+              { value: 'b', label: snapshot.settings.nameB },
+            ]}
+            value={deviceOwner ?? 'a'}
+            onChange={(v) => {
+              setDeviceOwner(v)
+              setDeviceOwnerState(v)
+            }}
+          />
+          <p className="mt-1.5 text-[12px] text-ink2">{t('deviceOwnerHint')}</p>
         </Field>
       </section>
 
