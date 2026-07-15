@@ -10,7 +10,7 @@ import { AddSheet } from './components/AddSheet'
 import { Home } from './screens/Home'
 import { Items } from './screens/Items'
 import { IncomeScreen } from './screens/IncomeScreen'
-import { Settings } from './screens/Settings'
+import { More } from './screens/More'
 import { Welcome } from './screens/Welcome'
 import { AiChat } from './screens/AiChat'
 
@@ -121,7 +121,7 @@ function Shell() {
           {tab === 'income' && (
             <IncomeScreen profile={profile} onProfile={setProfile} onEditIncome={openEditIncome} />
           )}
-          {tab === 'settings' && <Settings />}
+          {tab === 'more' && <More />}
         </div>
       </main>
 
