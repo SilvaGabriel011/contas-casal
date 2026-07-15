@@ -62,6 +62,35 @@ OpenAI é a função serverless em `api/ai.ts`, que antes **valida o token de lo
 Sem estar logado na conta do casal, o endpoint recusa a chamada, então ninguém consome seus créditos.
 Os dados enviados ao modelo são um resumo do snapshot local (itens, rendas e pagamentos recentes).
 
+## 🔔 Notificações push (opcional)
+
+Aviso no celular na noite anterior a cada vencimento ("pagar conta X amanhã"). Um cron da Vercel
+(`api/notify.ts`, todo dia 08:00 UTC ≈ 18h de Sydney) lê as inscrições e envia via Web Push.
+
+1. Gere as chaves VAPID (uma vez): `npx web-push generate-vapid-keys`
+2. No Vercel → Environment Variables, adicione:
+
+| Nome | Valor |
+| --- | --- |
+| `VAPID_PUBLIC_KEY` | a Public Key gerada |
+| `VAPID_PRIVATE_KEY` | a Private Key gerada |
+| `VAPID_SUBJECT` | `mailto:seu-email@exemplo.com` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Settings → API → `service_role` (⚠️ secreta — só na Vercel) |
+| `CRON_SECRET` | qualquer string longa aleatória (protege o endpoint do cron) |
+| `RESEND_API_KEY` | opcional — chave em [resend.com](https://resend.com) pra receber o aviso também **por e-mail** |
+| `RESEND_FROM` | opcional — remetente, ex: `Contas do Casal <contas@seudominio.com>` |
+
+**E-mail pros dois**: com a `RESEND_API_KEY` configurada, cadastre os dois e-mails em
+**Ajustes → Notificações → E-mails de aviso** e o resumo "vence amanhã" chega pra vocês dois.
+No plano grátis do Resend, o remetente padrão (`onboarding@resend.dev`) só entrega pro e-mail
+da própria conta Resend — pra enviar pros dois, verifique um domínio seu em Resend → Domains
+e use ele no `RESEND_FROM`.
+
+3. Rode o `supabase/schema.sql` de novo no SQL Editor (cria a tabela `push_subscriptions` e o
+   bucket de recibos — o script é idempotente, pode rodar quantas vezes quiser).
+4. Faça redeploy, abra o app **instalado na tela de início** (iOS 16.4+) e ative em
+   **Ajustes → Notificações no celular** em cada aparelho.
+
 ## 📅 Calendário (Apple e Google)
 
 Em **Ajustes → Calendário → Ativar calendário sincronizado**, o app cria um link secreto de feed

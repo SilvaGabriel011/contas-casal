@@ -10,6 +10,7 @@ import {
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Expense, HouseholdSettings, Income, Item, Payment, Snapshot, Transfer } from '../types'
 import { getDeviceOwner, setSavedEmail } from '../lib/device'
+import { subscribePush, unsubscribePush, type PushEnableResult } from '../lib/push'
 import {
   fetchRemoteConfig,
   getCloudConfig,
@@ -44,6 +45,11 @@ interface AppData {
   getCalendarFeed: () => Promise<string | null>
   enableCalendarFeed: (lang: string) => Promise<string | null>
   disableCalendarFeed: () => Promise<void>
+  uploadReceipt: (expenseId: string, blob: Blob) => Promise<boolean>
+  getReceiptUrl: (expenseId: string) => Promise<string | null>
+  deleteReceipt: (expenseId: string) => Promise<void>
+  enablePush: (lang: string) => Promise<PushEnableResult>
+  disablePush: () => Promise<void>
   upsertItem: (item: Item) => Promise<void>
   deleteItem: (id: string) => Promise<void>
   upsertIncome: (income: Income) => Promise<void>
@@ -337,6 +343,48 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await getSupabase(cfg).from('calendar_feeds').delete().eq('user_id', userIdRef.current)
   }, [])
 
+  // Receipts live in a private storage bucket keyed by expense id — no
+  // schema column needed, absence of the object simply means "no receipt".
+  const uploadReceipt = useCallback(async (expenseId: string, blob: Blob): Promise<boolean> => {
+    const cfg = getCloudConfig()
+    if (!cfg || !userIdRef.current) return false
+    const { error } = await getSupabase(cfg)
+      .storage.from('receipts')
+      .upload(`${userIdRef.current}/${expenseId}.jpg`, blob, { upsert: true, contentType: 'image/jpeg' })
+    if (error) {
+      logError('receipt-upload', error)
+      return false
+    }
+    return true
+  }, [])
+
+  const getReceiptUrl = useCallback(async (expenseId: string): Promise<string | null> => {
+    const cfg = getCloudConfig()
+    if (!cfg || !userIdRef.current) return null
+    const { data } = await getSupabase(cfg)
+      .storage.from('receipts')
+      .createSignedUrl(`${userIdRef.current}/${expenseId}.jpg`, 3600)
+    return data?.signedUrl ?? null
+  }, [])
+
+  const deleteReceipt = useCallback(async (expenseId: string) => {
+    const cfg = getCloudConfig()
+    if (!cfg || !userIdRef.current) return
+    await getSupabase(cfg).storage.from('receipts').remove([`${userIdRef.current}/${expenseId}.jpg`])
+  }, [])
+
+  const enablePush = useCallback(async (lang: string): Promise<PushEnableResult> => {
+    const cfg = getCloudConfig()
+    if (!cfg || !userIdRef.current) return 'unavailable'
+    return subscribePush(getSupabase(cfg), userIdRef.current, lang)
+  }, [])
+
+  const disablePush = useCallback(async () => {
+    const cfg = getCloudConfig()
+    if (!cfg) return
+    await unsubscribePush(getSupabase(cfg))
+  }, [])
+
   const backToWelcome = useCallback(() => {
     teardownCloud()
     setMode(null)
@@ -481,6 +529,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     getCalendarFeed,
     enableCalendarFeed,
     disableCalendarFeed,
+    uploadReceipt,
+    getReceiptUrl,
+    deleteReceipt,
+    enablePush,
+    disablePush,
     upsertItem,
     deleteItem,
     upsertIncome,

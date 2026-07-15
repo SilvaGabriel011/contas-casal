@@ -12,13 +12,41 @@ import { Items } from './screens/Items'
 import { IncomeScreen } from './screens/IncomeScreen'
 import { More, type MenuEntry } from './screens/More'
 import { ExpensesScreen } from './screens/ExpensesScreen'
+import { HistoryScreen } from './screens/HistoryScreen'
 import { SettleScreen } from './screens/SettleScreen'
 import { TransfersScreen } from './screens/TransfersScreen'
 import { ReportsScreen } from './screens/ReportsScreen'
+import { GoalsScreen } from './screens/GoalsScreen'
+import { TaxScreen } from './screens/TaxScreen'
+import { ReconcileScreen } from './screens/ReconcileScreen'
+import { WrappedScreen } from './screens/WrappedScreen'
 import { Welcome } from './screens/Welcome'
 import { AiChat } from './screens/AiChat'
+import { LockScreen } from './components/LockScreen'
+import { isLockEnabled } from './lib/applock'
 
 const PROFILE_KEY = 'cc.profile'
+
+// AI chat survives closing the app; capped so CSV attachments in old
+// messages can't blow the storage quota.
+const AI_CHAT_KEY = 'cc.aichat.v1'
+const AI_CHAT_MAX_MESSAGES = 40
+
+function loadAiChat(): AiMessage[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(AI_CHAT_KEY) ?? '[]')
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (m): m is AiMessage =>
+        typeof m === 'object' &&
+        m !== null &&
+        ((m as AiMessage).role === 'user' || (m as AiMessage).role === 'assistant') &&
+        typeof (m as AiMessage).content === 'string'
+    )
+  } catch {
+    return []
+  }
+}
 
 export default function App() {
   const { status } = useAppData()
@@ -77,11 +105,36 @@ function Shell() {
   const [tab, setTab] = useState<Tab>('home')
   useAppBadge()
   const [aiOpen, setAiOpen] = useState(false)
-  const [aiMessages, setAiMessages] = useState<AiMessage[]>([])
+  const [aiMessages, setAiMessages] = useState<AiMessage[]>(loadAiChat)
+
+  useEffect(() => {
+    // Debounced: streaming updates the last message on every chunk.
+    const id = setTimeout(() => {
+      try {
+        if (aiMessages.length === 0) localStorage.removeItem(AI_CHAT_KEY)
+        else localStorage.setItem(AI_CHAT_KEY, JSON.stringify(aiMessages.slice(-AI_CHAT_MAX_MESSAGES)))
+      } catch {
+        /* storage full or blocked — the chat just won't persist */
+      }
+    }, 400)
+    return () => clearTimeout(id)
+  }, [aiMessages])
   const [profile, setProfileState] = useState<Profile>(() => {
     const saved = localStorage.getItem(PROFILE_KEY)
     return saved === 'a' || saved === 'b' || saved === 'shared' ? saved : 'shared'
   })
+  const [locked, setLocked] = useState(isLockEnabled)
+
+  useEffect(() => {
+    // Re-arm the lock after 5+ minutes in the background.
+    let hiddenAt = 0
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') hiddenAt = Date.now()
+      else if (hiddenAt && Date.now() - hiddenAt > 5 * 60_000 && isLockEnabled()) setLocked(true)
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [])
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editItem, setEditItem] = useState<Item | null>(null)
   const [editIncome, setEditIncome] = useState<Income | null>(null)
@@ -129,6 +182,13 @@ function Shell() {
       render: () => <ExpensesScreen onEditExpense={openEditExpense} />,
     },
     {
+      view: 'history',
+      emoji: '🗓️',
+      labelKey: 'menuHistory',
+      hintKey: 'menuHistoryHint',
+      render: () => <HistoryScreen />,
+    },
+    {
       view: 'settle',
       emoji: '🤝',
       labelKey: 'menuSettle',
@@ -148,6 +208,34 @@ function Shell() {
       labelKey: 'menuCharts',
       hintKey: 'menuChartsHint',
       render: () => <ReportsScreen />,
+    },
+    {
+      view: 'goals',
+      emoji: '🐷',
+      labelKey: 'menuGoals',
+      hintKey: 'menuGoalsHint',
+      render: () => <GoalsScreen />,
+    },
+    {
+      view: 'reconcile',
+      emoji: '🏦',
+      labelKey: 'menuReconcile',
+      hintKey: 'menuReconcileHint',
+      render: () => <ReconcileScreen />,
+    },
+    {
+      view: 'tax',
+      emoji: '🧾',
+      labelKey: 'menuTax',
+      hintKey: 'menuTaxHint',
+      render: () => <TaxScreen />,
+    },
+    {
+      view: 'wrapped',
+      emoji: '🎁',
+      labelKey: 'menuWrapped',
+      hintKey: 'menuWrappedHint',
+      render: () => <WrappedScreen />,
     },
   ]
 
@@ -184,6 +272,8 @@ function Shell() {
       />
 
       <AiChat open={aiOpen} onClose={() => setAiOpen(false)} messages={aiMessages} setMessages={setAiMessages} />
+
+      {locked && <LockScreen onUnlocked={() => setLocked(false)} />}
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Currency, Expense, Frequency, Income, IncomeFrequency, Item, ItemKind, Owner } from '../types'
 import { getDeviceOwner } from '../lib/device'
 import { CATEGORIES } from '../types'
@@ -12,6 +12,7 @@ import { hourlyPerCycle } from '../lib/schedule'
 import { buildRemindersIcs, icsEventCount, shareIcs } from '../lib/ics'
 import { formatDay } from '../lib/i18n'
 import { addMonthsClamped, monthsInclusive, todayISO } from '../lib/dates'
+import { downscaleImage } from '../lib/image'
 import { Chip, Field, inputCls, Segmented, Sheet } from './ui'
 
 type FormKind = ItemKind | 'income' | 'expense'
@@ -33,6 +34,7 @@ export function AddSheet({
 }) {
   const {
     snapshot,
+    mode,
     upsertItem,
     deleteItem,
     upsertIncome,
@@ -40,6 +42,9 @@ export function AddSheet({
     upsertExpense,
     deleteExpense,
     saveSettings,
+    uploadReceipt,
+    getReceiptUrl,
+    deleteReceipt,
   } = useAppData()
   const { t, lang, locale, decimalSep } = useI18n()
   const editing = Boolean(editItem || editIncome || editExpense)
@@ -67,6 +72,10 @@ export function AddSheet({
   const [newCatOpen, setNewCatOpen] = useState(false)
   const [newCatEmoji, setNewCatEmoji] = useState('')
   const [newCatName, setNewCatName] = useState('')
+  const receiptInputRef = useRef<HTMLInputElement>(null)
+  const [receiptBlob, setReceiptBlob] = useState<Blob | null>(null)
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null)
+  const [receiptRemoved, setReceiptRemoved] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -75,6 +84,14 @@ export function AddSheet({
     setNewCatOpen(false)
     setNewCatEmoji('')
     setNewCatName('')
+    setReceiptBlob(null)
+    setReceiptPreview(null)
+    setReceiptRemoved(false)
+    if (editExpense && mode === 'cloud') {
+      getReceiptUrl(editExpense.id).then((url) => {
+        if (url) setReceiptPreview(url)
+      })
+    }
     if (editItem) {
       setKind(editItem.kind)
       setName(editItem.name)
@@ -195,8 +212,9 @@ export function AddSheet({
 
     if (kind === 'expense') {
       if (amount === null || amount <= 0) return setError(t('invalidAmount'))
+      const expenseId = editExpense?.id ?? crypto.randomUUID()
       await upsertExpense({
-        id: editExpense?.id ?? crypto.randomUUID(),
+        id: expenseId,
         date: startDate,
         amount,
         currency,
@@ -206,6 +224,14 @@ export function AddSheet({
         note: notes.trim() || null,
         createdAt: editExpense?.createdAt ?? new Date().toISOString(),
       })
+      if (mode === 'cloud') {
+        if (receiptBlob) {
+          const ok = await uploadReceipt(expenseId, await downscaleImage(receiptBlob))
+          if (!ok) alert(t('receiptFailed'))
+        } else if (receiptRemoved && editExpense) {
+          await deleteReceipt(expenseId)
+        }
+      }
       return onClose()
     }
 
@@ -253,7 +279,10 @@ export function AddSheet({
     if (!confirm(t('deleteConfirm'))) return
     if (editItem) await deleteItem(editItem.id)
     if (editIncome) await deleteIncome(editIncome.id)
-    if (editExpense) await deleteExpense(editExpense.id)
+    if (editExpense) {
+      await deleteExpense(editExpense.id)
+      if (mode === 'cloud') void deleteReceipt(editExpense.id)
+    }
     onClose()
   }
 
@@ -668,6 +697,52 @@ export function AddSheet({
                 placeholder={t('notesPlaceholder')}
               />
             </Field>
+
+            {kind === 'expense' && mode === 'cloud' && (
+              <Field label={`🧾 ${t('receiptLabel')}`}>
+                <input
+                  ref={receiptInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    if (f) {
+                      setReceiptBlob(f)
+                      setReceiptRemoved(false)
+                      setReceiptPreview(URL.createObjectURL(f))
+                    }
+                    e.target.value = ''
+                  }}
+                />
+                {receiptPreview ? (
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={receiptPreview}
+                      alt={t('receiptLabel')}
+                      className="h-24 w-24 rounded-xl border border-line object-cover"
+                    />
+                    <button
+                      onClick={() => {
+                        setReceiptBlob(null)
+                        setReceiptPreview(null)
+                        if (editExpense) setReceiptRemoved(true)
+                      }}
+                      className="press rounded-xl border border-line px-3 py-2 text-[13px] font-bold text-bad"
+                    >
+                      {t('receiptRemove')}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => receiptInputRef.current?.click()}
+                    className="press w-full rounded-xl border border-dashed border-line py-3 text-[13px] font-semibold text-ink2"
+                  >
+                    📷 {t('receiptAttach')}
+                  </button>
+                )}
+              </Field>
+            )}
           </div>
         )}
 

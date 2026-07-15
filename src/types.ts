@@ -79,12 +79,27 @@ export interface CustomCategory {
   label: string
 }
 
+export interface SavingsGoal {
+  id: string
+  emoji: string
+  name: string
+  target: number
+  currency: Currency
+  saved: number
+  targetDate: string | null
+  createdAt: string
+}
+
 export interface HouseholdSettings {
   nameA: string
   nameB: string
   customCategories: CustomCategory[]
   budgets?: Record<string, Budget>
   settledMonths?: string[]
+  // Stored in the settings JSON blob so no schema migration is needed.
+  goals?: SavingsGoal[]
+  taxCategories?: string[]
+  notifyEmails?: string[]
 }
 
 export interface Snapshot {

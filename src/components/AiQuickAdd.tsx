@@ -8,8 +8,10 @@ import { categoryLabel } from '../lib/categories'
 import { KIND_CONFIG } from '../lib/kinds'
 import { getDeviceOwner } from '../lib/device'
 import { todayISO } from '../lib/dates'
-import { parseQuickAdd, type QuickDraft } from '../lib/ai'
+import { useRef } from 'react'
+import { parseQuickAdd, parseReceipt, type QuickAddMeta, type QuickDraft } from '../lib/ai'
 import { useDictation } from '../lib/speech'
+import { downscaleImage } from '../lib/image'
 import { logError } from '../lib/errors'
 import { inputCls } from './ui'
 
@@ -30,33 +32,29 @@ export function AiQuickAdd({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState('')
   const [drafts, setDrafts] = useState<QuickDraft[] | null>(null)
   const dictation = useDictation(locale, setText, () => setError(t('speechDenied')))
+  const receiptRef = useRef<HTMLInputElement>(null)
 
   if (mode !== 'cloud') return null
 
-  const run = async () => {
-    if (!text.trim() || busy) return
-    if (dictation.listening) dictation.toggle(text)
+  const buildMeta = (): QuickAddMeta => ({
+    today: todayISO(),
+    nameA: snapshot.settings.nameA,
+    nameB: snapshot.settings.nameB,
+    categories: [...CATEGORIES, ...snapshot.settings.customCategories.map((c) => c.id)],
+  })
+
+  const parseWith = async (job: (token: string) => Promise<QuickDraft[]>, context: string) => {
     setBusy(true)
     setError('')
     setDrafts(null)
     try {
       const token = await getAccessToken()
       if (!token) throw new Error('unauthorized')
-      const result = await parseQuickAdd(
-        text,
-        {
-          today: todayISO(),
-          nameA: snapshot.settings.nameA,
-          nameB: snapshot.settings.nameB,
-          categories: [...CATEGORIES, ...snapshot.settings.customCategories.map((c) => c.id)],
-        },
-        lang,
-        token
-      )
+      const result = await job(token)
       if (result.length === 0) setError(t('aiQuickNone'))
       else setDrafts(result)
     } catch (e) {
-      logError('ai-parse', e)
+      logError(context, e)
       const code = (e as Error).message
       setError(
         code === 'missing-openai-key'
@@ -68,6 +66,24 @@ export function AiQuickAdd({ onDone }: { onDone: () => void }) {
     } finally {
       setBusy(false)
     }
+  }
+
+  const run = async () => {
+    if (!text.trim() || busy) return
+    if (dictation.listening) dictation.toggle(text)
+    await parseWith((token) => parseQuickAdd(text, buildMeta(), lang, token), 'ai-parse')
+  }
+
+  const scanReceipt = async (file: File) => {
+    if (busy) return
+    const blob = await downscaleImage(file, 1600, 0.8)
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result ?? ''))
+      reader.onerror = () => reject(new Error('generic'))
+      reader.readAsDataURL(blob)
+    })
+    await parseWith((token) => parseReceipt(dataUrl, buildMeta(), lang, token), 'ai-receipt')
   }
 
   const addDraft = async (d: QuickDraft) => {
@@ -150,6 +166,25 @@ export function AiQuickAdd({ onDone }: { onDone: () => void }) {
         rows={2}
       />
       <div className="flex gap-2">
+        <input
+          ref={receiptRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            if (f) scanReceipt(f)
+            e.target.value = ''
+          }}
+        />
+        <button
+          onClick={() => receiptRef.current?.click()}
+          disabled={busy}
+          aria-label={t('aiReceiptScan')}
+          className="press flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-line bg-card text-lg disabled:opacity-50"
+        >
+          🧾
+        </button>
         {dictation.supported && (
           <button
             onClick={() => {

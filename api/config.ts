@@ -28,7 +28,11 @@ export default function handler(): Response {
     })
   }
 
-  return new Response(JSON.stringify({ url, anonKey }), {
+  // Public by design (it goes into every push subscription); absence just
+  // means push notifications haven't been configured on Vercel yet.
+  const vapidPublicKey = (env.VAPID_PUBLIC_KEY || env.VITE_VAPID_PUBLIC_KEY || '').trim() || undefined
+
+  return new Response(JSON.stringify({ url, anonKey, vapidPublicKey }), {
     headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=300' },
   })
 }
