@@ -3,8 +3,8 @@ import type { Currency, Item, Occurrence, Profile } from '../types'
 import { useAppData } from '../data/DataProvider'
 import { useI18n, formatDay } from '../lib/i18n'
 import { formatMoneyShort } from '../lib/money'
-import { addDays, daysBetween, endOfMonth, startOfMonth, todayISO } from '../lib/dates'
-import { buildOccurrences, monthlyEquivalent, nextPayday, visibleToProfile } from '../lib/schedule'
+import { addDays, addMonthsClamped, daysBetween, endOfMonth, startOfMonth, todayISO } from '../lib/dates'
+import { buildOccurrences, installmentProgress, monthlyEquivalent, nextPayday, visibleToProfile } from '../lib/schedule'
 import { expensesFor, monthOf, totalsByCurrency } from '../lib/expenses'
 import { budgetAlerts, categoryAlerts } from '../lib/insights'
 import { categoryLabel } from '../lib/categories'
@@ -84,6 +84,28 @@ export function Home({
       ...trend.map((a) => ({ kind: 'trend' as const, ...a })),
     ].slice(0, 2)
   }, [snapshot.expenses, snapshot.settings, today])
+
+  // "Free of Brazil" countdown: when the last BRL instalment plan ends and
+  // how much is still owed until then.
+  const brCountdown = useMemo(() => {
+    let lastDue = ''
+    let remaining = 0
+    let total = 0
+    for (const item of snapshot.items) {
+      if (item.archived || item.currency !== 'BRL' || item.kind !== 'installment' || !item.installmentsTotal)
+        continue
+      const { paid } = installmentProgress(item, snapshot.payments)
+      const left = item.installmentsTotal - paid
+      if (left <= 0) continue
+      remaining += left
+      total += left * item.amount
+      const end = addMonthsClamped(item.startDate, item.installmentsTotal - 1)
+      if (end > lastDue) lastDue = end
+    }
+    return remaining > 0 ? { lastDue, remaining, total } : null
+  }, [snapshot.items, snapshot.payments])
+
+  const activeGoals = (snapshot.settings.goals ?? []).filter((g) => g.target > 0 && g.saved < g.target).slice(0, 2)
 
   const payday = nextPayday(incomes, today)
   const overdue = listOccs.filter((o) => !o.payment && o.dueDate < today)
@@ -177,6 +199,58 @@ export function Home({
                   </p>
                 </div>
               ))}
+            </section>
+          )}
+
+          {brCountdown && (
+            <div className="anim-rise flex items-center gap-3 rounded-2xl border border-line bg-card px-4 py-3">
+              <span className="text-2xl">🇧🇷</span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-bold text-ink">
+                  {t('brCountdownTitle', {
+                    month: new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(
+                      new Date(
+                        Number(brCountdown.lastDue.slice(0, 4)),
+                        Number(brCountdown.lastDue.slice(5, 7)) - 1,
+                        1
+                      )
+                    ),
+                  })}
+                </p>
+                <p className="num truncate text-[12px] text-ink2">
+                  {t('brCountdownBody', {
+                    n: brCountdown.remaining,
+                    v: formatMoneyShort(brCountdown.total, 'BRL', locale),
+                  })}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {activeGoals.length > 0 && (
+            <section className="space-y-2">
+              {activeGoals.map((g) => {
+                const ratio = Math.min(1, g.saved / g.target)
+                return (
+                  <div key={g.id} className="anim-rise rounded-2xl border border-line bg-card px-4 py-3">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p className="min-w-0 truncate text-[13px] font-bold text-ink">
+                        {g.emoji || '🐷'} {g.name}
+                      </p>
+                      <p className="num shrink-0 text-[12px] font-bold text-ink2">
+                        {formatMoneyShort(g.saved, g.currency, locale)} /{' '}
+                        {formatMoneyShort(g.target, g.currency, locale)}
+                      </p>
+                    </div>
+                    <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-card2">
+                      <div
+                        className="grad-accent h-full rounded-full transition-all duration-700"
+                        style={{ width: `${ratio * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
             </section>
           )}
 

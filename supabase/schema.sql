@@ -209,3 +209,33 @@ begin
   alter publication supabase_realtime add table public.app_settings;
 exception when duplicate_object then null;
 end $$;
+
+-- ============================================================================
+-- v3: notificações push + fotos de recibo
+-- ============================================================================
+
+-- Push: uma linha por aparelho inscrito. O cron da Vercel (api/notify) lê com
+-- a service role e envia "pagar X amanhã".
+create table if not exists public.push_subscriptions (
+  endpoint text primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  p256dh text not null,
+  auth text not null,
+  lang text not null default 'pt',
+  created_at timestamptz not null default now()
+);
+alter table public.push_subscriptions enable row level security;
+drop policy if exists "own push subscriptions" on public.push_subscriptions;
+create policy "own push subscriptions" on public.push_subscriptions
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Recibos: bucket privado, um arquivo por gasto ("<user_id>/<expense_id>.jpg").
+insert into storage.buckets (id, name, public)
+values ('receipts', 'receipts', false)
+on conflict (id) do nothing;
+
+drop policy if exists "own receipts" on storage.objects;
+create policy "own receipts" on storage.objects
+  for all
+  using (bucket_id = 'receipts' and (storage.foldername(name))[1] = auth.uid()::text)
+  with check (bucket_id = 'receipts' and (storage.foldername(name))[1] = auth.uid()::text);

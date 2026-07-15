@@ -6,6 +6,8 @@ import { useTheme, type Theme } from '../lib/theme'
 import { formatMoney } from '../lib/money'
 import { buildRemindersIcs, icsEventCount, shareIcs } from '../lib/ics'
 import { clearErrorLog, errorReport, getErrorLog } from '../lib/errors'
+import { pushEnabled, pushSupported } from '../lib/push'
+import { disableLock, enableLock, isLockEnabled, lockAvailable } from '../lib/applock'
 import { isItemFinished } from '../lib/schedule'
 import { Field, inputCls, Segmented } from '../components/ui'
 
@@ -22,6 +24,8 @@ export function Settings() {
     getCalendarFeed,
     enableCalendarFeed,
     disableCalendarFeed,
+    enablePush,
+    disablePush,
   } = useAppData()
   const { t, lang, locale, setLang } = useI18n()
   const { theme, setTheme } = useTheme()
@@ -34,6 +38,22 @@ export function Settings() {
   const [deviceOwner, setDeviceOwnerState] = useState<'a' | 'b' | null>(getDeviceOwner)
   const [errLog, setErrLog] = useState(getErrorLog)
   const [reportCopied, setReportCopied] = useState(false)
+  const [pushState, setPushState] = useState<'unknown' | 'on' | 'off' | 'unsupported'>('unknown')
+  const [pushBusy, setPushBusy] = useState(false)
+  const [lockOn, setLockOn] = useState(isLockEnabled)
+  const [lockOk, setLockOk] = useState(false)
+
+  useEffect(() => {
+    if (!pushSupported()) {
+      setPushState('unsupported')
+      return
+    }
+    pushEnabled().then((on) => setPushState(on ? 'on' : 'off'))
+  }, [])
+
+  useEffect(() => {
+    lockAvailable().then(setLockOk)
+  }, [])
 
   const copyReport = async () => {
     try {
@@ -329,6 +349,73 @@ export function Settings() {
           📤 {t('calendarExportAll')}
         </button>
       </section>
+
+      {mode === 'cloud' && pushState !== 'unsupported' && (
+        <section className="space-y-3 rounded-3xl border border-line bg-card p-5">
+          <p className="text-[13px] font-extrabold tracking-wide text-ink2 uppercase">🔔 {t('pushSection')}</p>
+          <p className="text-[13px] leading-relaxed text-ink2">{t('pushBody')}</p>
+          {pushState === 'on' ? (
+            <button
+              onClick={async () => {
+                setPushBusy(true)
+                await disablePush()
+                setPushBusy(false)
+                setPushState('off')
+              }}
+              disabled={pushBusy}
+              className="press w-full rounded-2xl border border-line py-3 text-[14px] font-semibold text-bad disabled:opacity-60"
+            >
+              {t('pushDisable')}
+            </button>
+          ) : (
+            <button
+              onClick={async () => {
+                setPushBusy(true)
+                const r = await enablePush(lang)
+                setPushBusy(false)
+                if (r === 'ok') setPushState('on')
+                else if (r === 'denied') alert(t('pushDenied'))
+                else if (r === 'unavailable') alert(t('pushUnavailable'))
+                else alert(t('pushFailed'))
+              }}
+              disabled={pushBusy || pushState === 'unknown'}
+              className="press grad-accent w-full rounded-2xl py-3.5 text-[15px] font-bold text-white disabled:opacity-60"
+            >
+              {pushBusy ? t('loading') : `🔔 ${t('pushEnable')}`}
+            </button>
+          )}
+          <p className="text-[11px] leading-relaxed text-ink2">{t('pushIosHint')}</p>
+        </section>
+      )}
+
+      {lockOk && (
+        <section className="space-y-3 rounded-3xl border border-line bg-card p-5">
+          <p className="text-[13px] font-extrabold tracking-wide text-ink2 uppercase">🔒 {t('lockSection')}</p>
+          <p className="text-[13px] leading-relaxed text-ink2">{t('lockHint')}</p>
+          {lockOn ? (
+            <button
+              onClick={() => {
+                disableLock()
+                setLockOn(false)
+              }}
+              className="press w-full rounded-2xl border border-line py-3 text-[14px] font-semibold text-bad"
+            >
+              {t('lockDisable')}
+            </button>
+          ) : (
+            <button
+              onClick={async () => {
+                const ok = await enableLock()
+                if (ok) setLockOn(true)
+                else alert(t('lockEnableFailed'))
+              }}
+              className="press grad-accent w-full rounded-2xl py-3.5 text-[15px] font-bold text-white"
+            >
+              🔒 {t('lockEnable')}
+            </button>
+          )}
+        </section>
+      )}
 
       <section className="space-y-3 rounded-3xl border border-line bg-card p-5">
         <p className="text-[13px] font-extrabold tracking-wide text-ink2 uppercase">🩺 {t('diagTitle')}</p>

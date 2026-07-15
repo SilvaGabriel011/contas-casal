@@ -11,6 +11,8 @@ export type MoreView =
   | 'tax'
   | 'charts'
   | 'reconcile'
+  | 'goals'
+  | 'wrapped'
   | 'settings'
 
 interface MenuEntry {

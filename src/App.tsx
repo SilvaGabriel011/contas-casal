@@ -16,8 +16,14 @@ import { HistoryScreen } from './screens/HistoryScreen'
 import { SettleScreen } from './screens/SettleScreen'
 import { TransfersScreen } from './screens/TransfersScreen'
 import { ReportsScreen } from './screens/ReportsScreen'
+import { GoalsScreen } from './screens/GoalsScreen'
+import { TaxScreen } from './screens/TaxScreen'
+import { ReconcileScreen } from './screens/ReconcileScreen'
+import { WrappedScreen } from './screens/WrappedScreen'
 import { Welcome } from './screens/Welcome'
 import { AiChat } from './screens/AiChat'
+import { LockScreen } from './components/LockScreen'
+import { isLockEnabled } from './lib/applock'
 
 const PROFILE_KEY = 'cc.profile'
 
@@ -117,6 +123,18 @@ function Shell() {
     const saved = localStorage.getItem(PROFILE_KEY)
     return saved === 'a' || saved === 'b' || saved === 'shared' ? saved : 'shared'
   })
+  const [locked, setLocked] = useState(isLockEnabled)
+
+  useEffect(() => {
+    // Re-arm the lock after 5+ minutes in the background.
+    let hiddenAt = 0
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') hiddenAt = Date.now()
+      else if (hiddenAt && Date.now() - hiddenAt > 5 * 60_000 && isLockEnabled()) setLocked(true)
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [])
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editItem, setEditItem] = useState<Item | null>(null)
   const [editIncome, setEditIncome] = useState<Income | null>(null)
@@ -191,6 +209,34 @@ function Shell() {
       hintKey: 'menuChartsHint',
       render: () => <ReportsScreen />,
     },
+    {
+      view: 'goals',
+      emoji: '🐷',
+      labelKey: 'menuGoals',
+      hintKey: 'menuGoalsHint',
+      render: () => <GoalsScreen />,
+    },
+    {
+      view: 'reconcile',
+      emoji: '🏦',
+      labelKey: 'menuReconcile',
+      hintKey: 'menuReconcileHint',
+      render: () => <ReconcileScreen />,
+    },
+    {
+      view: 'tax',
+      emoji: '🧾',
+      labelKey: 'menuTax',
+      hintKey: 'menuTaxHint',
+      render: () => <TaxScreen />,
+    },
+    {
+      view: 'wrapped',
+      emoji: '🎁',
+      labelKey: 'menuWrapped',
+      hintKey: 'menuWrappedHint',
+      render: () => <WrappedScreen />,
+    },
   ]
 
   return (
@@ -226,6 +272,8 @@ function Shell() {
       />
 
       <AiChat open={aiOpen} onClose={() => setAiOpen(false)} messages={aiMessages} setMessages={setAiMessages} />
+
+      {locked && <LockScreen onUnlocked={() => setLocked(false)} />}
     </div>
   )
 }

@@ -21,7 +21,7 @@ function cspMeta(): Plugin {
           "default-src 'self'",
           `script-src 'self' ${hashes.join(' ')}`.trim(),
           "style-src 'self' 'unsafe-inline'",
-          "img-src 'self' data:",
+          "img-src 'self' data: blob: https://*.supabase.co",
           "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.frankfurter.dev",
           "manifest-src 'self'",
           "worker-src 'self'",
@@ -48,6 +48,10 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icons/apple-touch-icon.png'],
+      workbox: {
+        // push-sw.js (in public/) adds the push + notificationclick handlers.
+        importScripts: ['push-sw.js'],
+      },
       manifest: {
         name: 'Contas do Casal',
         short_name: 'Contas',
