@@ -14,6 +14,7 @@ import { More, type MenuEntry } from './screens/More'
 import { ExpensesScreen } from './screens/ExpensesScreen'
 import { SettleScreen } from './screens/SettleScreen'
 import { TransfersScreen } from './screens/TransfersScreen'
+import { ReportsScreen } from './screens/ReportsScreen'
 import { Welcome } from './screens/Welcome'
 import { AiChat } from './screens/AiChat'
 
@@ -140,6 +141,13 @@ function Shell() {
       labelKey: 'menuTransfers',
       hintKey: 'menuTransfersHint',
       render: () => <TransfersScreen />,
+    },
+    {
+      view: 'charts',
+      emoji: '📊',
+      labelKey: 'menuCharts',
+      hintKey: 'menuChartsHint',
+      render: () => <ReportsScreen />,
     },
   ]
 
