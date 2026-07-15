@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useAppData } from '../data/DataProvider'
-import { useI18n, type Lang } from '../lib/i18n'
+import { useI18n, formatDay, type Lang } from '../lib/i18n'
 import { useTheme, type Theme } from '../lib/theme'
+import { formatMoney } from '../lib/money'
+import { buildRemindersIcs, icsEventCount, shareIcs } from '../lib/ics'
+import { isItemFinished } from '../lib/schedule'
 import { Field, inputCls, Segmented } from '../components/ui'
 
 export function Settings() {
   const { snapshot, saveSettings, mode, userEmail, signOut, backToWelcome, resetDemo } = useAppData()
-  const { t, lang, setLang } = useI18n()
+  const { t, lang, locale, setLang } = useI18n()
   const { theme, setTheme } = useTheme()
 
   const [nameA, setNameA] = useState(snapshot.settings.nameA)
@@ -37,6 +40,19 @@ export function Settings() {
     a.download = 'contas-casal.json'
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  const exportCalendar = () => {
+    const items = snapshot.items.filter((i) => !i.archived && !isItemFinished(i, snapshot.payments))
+    const ics = buildRemindersIcs(
+      items,
+      (i, due) =>
+        t('calendarReminderTitle', { name: i.name, amount: formatMoney(i.amount, i.currency, locale) }) +
+        ` (${formatDay(due, locale)})`,
+      (_i, due) => t('calendarReminderBody', { date: formatDay(due, locale) })
+    )
+    if (icsEventCount(ics) === 0) return alert(t('calendarNothing'))
+    shareIcs('contas-casal-lembretes.ics', ics)
   }
 
   return (
@@ -140,6 +156,13 @@ export function Settings() {
           className="press w-full rounded-2xl border border-line py-3 text-[14px] font-semibold text-ink"
         >
           📤 {t('exportData')}
+        </button>
+
+        <button
+          onClick={exportCalendar}
+          className="press w-full rounded-2xl border border-line py-3 text-[14px] font-semibold text-ink"
+        >
+          📅 {t('calendarExportAll')}
         </button>
       </section>
 

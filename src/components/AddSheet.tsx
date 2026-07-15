@@ -7,6 +7,8 @@ import { CAT_KEY, categoryEmoji, categoryLabel } from '../lib/categories'
 import { FREQ_EVERY, ITEM_KINDS, KIND_CONFIG } from '../lib/kinds'
 import { formatAmountInput, formatMoney, parseAmount } from '../lib/money'
 import { hourlyPerCycle } from '../lib/schedule'
+import { buildRemindersIcs, icsEventCount, shareIcs } from '../lib/ics'
+import { formatDay } from '../lib/i18n'
 import { todayISO } from '../lib/dates'
 import { Chip, Field, inputCls, Segmented, Sheet } from './ui'
 
@@ -191,6 +193,19 @@ export function AddSheet({
     if (editItem) await deleteItem(editItem.id)
     if (editIncome) await deleteIncome(editIncome.id)
     onClose()
+  }
+
+  const exportReminder = () => {
+    if (!editItem) return
+    const ics = buildRemindersIcs(
+      [editItem],
+      (i, due) =>
+        t('calendarReminderTitle', { name: i.name, amount: formatMoney(i.amount, i.currency, locale) }) +
+        ` (${formatDay(due, locale)})`,
+      (_i, due) => t('calendarReminderBody', { date: formatDay(due, locale) })
+    )
+    if (icsEventCount(ics) === 0) return setError(t('calendarNothing'))
+    shareIcs(`${editItem.name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-')}-lembretes.ics`, ics)
   }
 
   const incomeFreqOptions: IncomeFrequency[] = ['weekly', 'fortnightly', 'monthly']
@@ -470,9 +485,17 @@ export function AddSheet({
         )}
 
         {editing && editItem && (
-          <p className="text-[13px] font-semibold text-ink2">
-            {categoryLabel(category, snapshot.settings, t)} · {t(kind as TKey)}
-          </p>
+          <>
+            <button
+              onClick={exportReminder}
+              className="press w-full rounded-2xl border border-line bg-card2 py-3 text-[14px] font-semibold text-ink"
+            >
+              📅 {t('calendarAdd')}
+            </button>
+            <p className="text-[13px] font-semibold text-ink2">
+              {categoryLabel(category, snapshot.settings, t)} · {t(kind as TKey)}
+            </p>
+          </>
         )}
 
         {error && <p className="text-sm font-semibold text-bad">{error}</p>}
