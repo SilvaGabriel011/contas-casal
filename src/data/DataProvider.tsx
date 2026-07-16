@@ -50,6 +50,8 @@ interface AppData {
   deleteReceipt: (expenseId: string) => Promise<void>
   enablePush: (lang: string) => Promise<PushEnableResult>
   disablePush: () => Promise<void>
+  listBackups: () => Promise<{ id: string; takenAt: string }[]>
+  getBackup: (id: string) => Promise<Snapshot | null>
   upsertItem: (item: Item) => Promise<void>
   deleteItem: (id: string) => Promise<void>
   upsertIncome: (income: Income) => Promise<void>
@@ -385,6 +387,33 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await unsubscribePush(getSupabase(cfg))
   }, [])
 
+  // Automatic nightly snapshots written by the backup cron (RLS-scoped).
+  const listBackups = useCallback(async (): Promise<{ id: string; takenAt: string }[]> => {
+    const cfg = getCloudConfig()
+    if (!cfg || !userIdRef.current) return []
+    const { data, error } = await getSupabase(cfg)
+      .from('backups')
+      .select('id,taken_at')
+      .order('taken_at', { ascending: false })
+      .limit(30)
+    if (error) {
+      logError('backups-list', error)
+      return []
+    }
+    return (data ?? []).map((r) => ({ id: r.id as string, takenAt: r.taken_at as string }))
+  }, [])
+
+  const getBackup = useCallback(async (id: string): Promise<Snapshot | null> => {
+    const cfg = getCloudConfig()
+    if (!cfg || !userIdRef.current) return null
+    const { data, error } = await getSupabase(cfg).from('backups').select('data').eq('id', id).maybeSingle()
+    if (error || !data) {
+      if (error) logError('backups-get', error)
+      return null
+    }
+    return data.data as Snapshot
+  }, [])
+
   const backToWelcome = useCallback(() => {
     teardownCloud()
     setMode(null)
@@ -534,6 +563,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     deleteReceipt,
     enablePush,
     disablePush,
+    listBackups,
+    getBackup,
     upsertItem,
     deleteItem,
     upsertIncome,

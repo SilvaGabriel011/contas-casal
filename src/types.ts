@@ -103,6 +103,8 @@ export interface SavingsGoal {
   target: number
   currency: Currency
   saved: number
+  // Linked vault box: when set, the goal's saved amount IS the box amount.
+  boxId?: string | null
   targetDate: string | null
   createdAt: string
 }
@@ -118,6 +120,8 @@ export interface HouseholdSettings {
   taxCategories?: string[]
   notifyEmails?: string[]
   vault?: VaultData
+  // Notify (push/email) when AUD->BRL crosses this rate.
+  fxAlert?: { target: number }
 }
 
 export interface Snapshot {

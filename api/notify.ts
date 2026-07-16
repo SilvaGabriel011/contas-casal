@@ -52,17 +52,23 @@ export default async function handler(req: any, res: any) {
   const resendKey = process.env.RESEND_API_KEY
   const emailFrom = process.env.RESEND_FROM || 'Contas do Casal <onboarding@resend.dev>'
   const emailsByUser = new Map<string, string[]>()
-  if (resendKey) {
+  const fxTargetByUser = new Map<string, number>()
+  {
     const { data: settingsRows } = await sb.from('app_settings').select('user_id,data')
     for (const row of settingsRows ?? []) {
-      const emails = Array.isArray(row?.data?.notifyEmails)
-        ? row.data.notifyEmails.filter((e: unknown) => typeof e === 'string' && e.includes('@'))
-        : []
-      if (emails.length > 0) emailsByUser.set(row.user_id, emails)
+      if (resendKey) {
+        const emails = Array.isArray(row?.data?.notifyEmails)
+          ? row.data.notifyEmails.filter((e: unknown) => typeof e === 'string' && (e as string).includes('@'))
+          : []
+        if (emails.length > 0) emailsByUser.set(row.user_id, emails)
+      }
+      const target = Number(row?.data?.fxAlert?.target)
+      if (Number.isFinite(target) && target > 0) fxTargetByUser.set(row.user_id, target)
     }
   }
 
-  if ((!subs || subs.length === 0) && emailsByUser.size === 0) return res.status(200).json({ sent: 0 })
+  if ((!subs || subs.length === 0) && emailsByUser.size === 0 && fxTargetByUser.size === 0)
+    return res.status(200).json({ sent: 0 })
 
   // The couple lives in Australia — "tomorrow" is Sydney's tomorrow.
   const sydneyToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Australia/Sydney' }).format(new Date())
@@ -146,6 +152,69 @@ export default async function handler(req: any, res: any) {
     }
   }
 
+  // FX alert: notify once, on the day AUD->BRL crosses the household target.
+  // Crossing = yesterday's ECB fix below target, today's at/above it.
+  let fxSent = 0
+  if (fxTargetByUser.size > 0) {
+    try {
+      const [latestRes, prevRes] = await Promise.all([
+        fetch('https://api.frankfurter.dev/v1/latest?base=AUD&symbols=BRL'),
+        fetch(
+          `https://api.frankfurter.dev/v1/${addDays(sydneyToday, -4)}..${addDays(sydneyToday, -1)}?base=AUD&symbols=BRL`
+        ),
+      ])
+      const latest = latestRes.ok ? Number((await latestRes.json())?.rates?.BRL) : NaN
+      let prev = NaN
+      if (prevRes.ok) {
+        const data = await prevRes.json()
+        const dates = Object.keys(data?.rates ?? {}).sort()
+        if (dates.length > 0) prev = Number(data.rates[dates[dates.length - 1]]?.BRL)
+      }
+      if (Number.isFinite(latest) && Number.isFinite(prev)) {
+        for (const [userId, target] of fxTargetByUser) {
+          if (!(prev < target && latest >= target)) continue
+          const bodyPt = `AUD→BRL bateu ${latest.toFixed(2)} (alvo ${target.toFixed(2)}) — boa hora de mandar pro Brasil?`
+          const bodyEn = `AUD→BRL hit ${latest.toFixed(2)} (target ${target.toFixed(2)}) — good time to send money?`
+          for (const sub of byUser.get(userId) ?? []) {
+            const subscription = { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }
+            try {
+              await webpush.sendNotification(
+                subscription,
+                JSON.stringify({
+                  title: '💱 Contas do Casal',
+                  body: sub.lang === 'en' ? bodyEn : bodyPt,
+                  tag: `fx-${sydneyToday}`,
+                })
+              )
+              fxSent++
+            } catch (e: any) {
+              if (e?.statusCode === 404 || e?.statusCode === 410) dead.push(sub.endpoint)
+            }
+          }
+          const emails = emailsByUser.get(userId)
+          if (resendKey && emails && emails.length > 0) {
+            try {
+              await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: { authorization: `Bearer ${resendKey}`, 'content-type': 'application/json' },
+                body: JSON.stringify({
+                  from: emailFrom,
+                  to: emails,
+                  subject: `💱 AUD→BRL bateu ${latest.toFixed(2)}`,
+                  html: `<p>${bodyPt}</p><p style="color:#888;font-size:12px">Contas do Casal 💞</p>`,
+                }),
+              })
+            } catch {
+              /* best-effort */
+            }
+          }
+        }
+      }
+    } catch {
+      /* fx alert must never break the bill reminders */
+    }
+  }
+
   if (dead.length > 0) await sb.from('push_subscriptions').delete().in('endpoint', dead)
-  return res.status(200).json({ sent, emailed, tomorrow })
+  return res.status(200).json({ sent, emailed, fxSent, tomorrow })
 }

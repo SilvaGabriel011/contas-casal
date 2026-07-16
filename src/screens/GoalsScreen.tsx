@@ -1,10 +1,12 @@
 import { useState } from 'react'
-import type { Currency, SavingsGoal } from '../types'
+import type { Currency, SavingsGoal, VaultBox } from '../types'
 import { useAppData } from '../data/DataProvider'
 import { useI18n } from '../lib/i18n'
 import { formatMoney, formatMoneyShort, parseAmount } from '../lib/money'
 import { monthsInclusive, todayISO } from '../lib/dates'
-import { EmptyState, Field, inputCls, Segmented } from '../components/ui'
+import { monthOf } from '../lib/expenses'
+import { getVault, goalSaved, recordDeposit } from '../lib/vault'
+import { Chip, EmptyState, Field, inputCls, Segmented } from '../components/ui'
 
 export function GoalsScreen() {
   const { snapshot, saveSettings } = useAppData()
@@ -22,7 +24,16 @@ export function GoalsScreen() {
   const deposit = async (goal: SavingsGoal) => {
     const v = parseAmount(depositRaw, decimalSep)
     if (v === null || v === 0) return
-    await persist(goals.map((g) => (g.id === goal.id ? { ...g, saved: Math.max(0, g.saved + v) } : g)))
+    const vault = getVault(snapshot.settings)
+    if (goal.boxId && vault.boxes.some((b) => b.id === goal.boxId)) {
+      // Linked goal: the money goes into (and reads from) the vault box.
+      await saveSettings({
+        ...snapshot.settings,
+        vault: recordDeposit(vault, goal.boxId, v, monthOf(todayISO())),
+      })
+    } else {
+      await persist(goals.map((g) => (g.id === goal.id ? { ...g, saved: Math.max(0, g.saved + v) } : g)))
+    }
     setDepositId(null)
     setDepositRaw('')
   }
@@ -44,10 +55,14 @@ export function GoalsScreen() {
       ) : (
         <div className="space-y-3">
           {goals.map((g, i) => {
-            const ratio = g.target > 0 ? Math.min(1, g.saved / g.target) : 0
-            const done = g.saved >= g.target
+            const saved = goalSaved(g, snapshot.settings)
+            const linkedBox = g.boxId
+              ? getVault(snapshot.settings).boxes.find((b) => b.id === g.boxId)
+              : undefined
+            const ratio = g.target > 0 ? Math.min(1, saved / g.target) : 0
+            const done = saved >= g.target
             const monthsLeft = g.targetDate ? Math.max(1, monthsInclusive(todayISO(), g.targetDate)) : null
-            const perMonth = monthsLeft && !done ? (g.target - g.saved) / monthsLeft : null
+            const perMonth = monthsLeft && !done ? (g.target - saved) / monthsLeft : null
             return (
               <div
                 key={g.id}
@@ -61,9 +76,14 @@ export function GoalsScreen() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[15px] font-bold text-ink">{g.name}</p>
                     <p className="num text-[13px] font-semibold text-ink2">
-                      {formatMoneyShort(g.saved, g.currency, locale)} / {formatMoneyShort(g.target, g.currency, locale)}
+                      {formatMoneyShort(saved, g.currency, locale)} / {formatMoneyShort(g.target, g.currency, locale)}
                       <span className="ml-1.5 font-bold text-accent">{Math.round(ratio * 100)}%</span>
                     </p>
+                    {linkedBox && (
+                      <p className="truncate text-[11px] text-ink2">
+                        🔗 {linkedBox.emoji} {linkedBox.name}
+                      </p>
+                    )}
                   </div>
                   <button
                     onClick={() => setEditing(g)}
@@ -87,7 +107,7 @@ export function GoalsScreen() {
                       ? t('goalDone')
                       : perMonth !== null
                         ? t('goalPerMonth', { v: formatMoneyShort(perMonth, g.currency, locale) })
-                        : t('goalRemaining', { v: formatMoneyShort(g.target - g.saved, g.currency, locale) })}
+                        : t('goalRemaining', { v: formatMoneyShort(g.target - saved, g.currency, locale) })}
                   </p>
                   {!done && (
                     <button
@@ -138,7 +158,7 @@ export function GoalsScreen() {
                     {(() => {
                       const v = parseAmount(depositRaw, decimalSep)
                       if (v === null || v === 0) return null
-                      const next = Math.max(0, g.saved + v)
+                      const next = Math.max(0, saved + v)
                       return (
                         <p className="num text-[12px] font-semibold text-accent">
                           {t('goalNewTotal', {
@@ -159,6 +179,7 @@ export function GoalsScreen() {
       {editing !== null ? (
         <GoalForm
           goal={editing === 'new' ? null : editing}
+          boxes={getVault(snapshot.settings).boxes}
           onSave={async (g) => {
             const exists = goals.some((x) => x.id === g.id)
             await persist(exists ? goals.map((x) => (x.id === g.id ? g : x)) : [...goals, g])
@@ -181,11 +202,13 @@ export function GoalsScreen() {
 
 function GoalForm({
   goal,
+  boxes,
   onSave,
   onDelete,
   onCancel,
 }: {
   goal: SavingsGoal | null
+  boxes: VaultBox[]
   onSave: (g: SavingsGoal) => Promise<void>
   onDelete?: () => void
   onCancel: () => void
@@ -196,15 +219,26 @@ function GoalForm({
   const [targetRaw, setTargetRaw] = useState(goal ? String(goal.target) : '')
   const [savedRaw, setSavedRaw] = useState(goal && goal.saved > 0 ? String(goal.saved) : '')
   const [currency, setCurrency] = useState<Currency>(goal?.currency ?? 'AUD')
+  const [boxId, setBoxId] = useState<string | null>(goal?.boxId ?? null)
   const [targetDate, setTargetDate] = useState(goal?.targetDate ?? '')
   const [error, setError] = useState('')
 
   const target = parseAmount(targetRaw, decimalSep)
+  const linkable = boxes.filter((b) => b.currency === currency)
+
+  const pickCurrency = (c: Currency) => {
+    setCurrency(c)
+    if (boxId && !boxes.some((b) => b.id === boxId && b.currency === c)) setBoxId(null)
+  }
 
   const save = async () => {
     if (!name.trim()) return setError(t('fillName'))
     if (target === null || target <= 0) return setError(t('invalidAmount'))
-    const saved = savedRaw.trim() === '' ? (goal?.saved ?? 0) : parseAmount(savedRaw, decimalSep)
+    const saved = boxId
+      ? (goal?.saved ?? 0)
+      : savedRaw.trim() === ''
+        ? (goal?.saved ?? 0)
+        : parseAmount(savedRaw, decimalSep)
     if (saved === null || saved < 0) return setError(t('invalidAmount'))
     await onSave({
       id: goal?.id ?? crypto.randomUUID(),
@@ -213,6 +247,7 @@ function GoalForm({
       target,
       currency,
       saved,
+      boxId,
       targetDate: targetDate || null,
       createdAt: goal?.createdAt ?? new Date().toISOString(),
     })
@@ -264,19 +299,39 @@ function GoalForm({
               { value: 'BRL', label: '🇧🇷' },
             ]}
             value={currency}
-            onChange={setCurrency}
+            onChange={pickCurrency}
           />
         </Field>
       </div>
-      <Field label={t('goalSavedLabel')}>
-        <input
-          className={`${inputCls} num`}
-          value={savedRaw}
-          onChange={(e) => setSavedRaw(e.target.value)}
-          inputMode="decimal"
-          placeholder={decimalSep === ',' ? '0,00' : '0.00'}
-        />
-      </Field>
+      {boxes.length > 0 && (
+        <Field label={`🔗 ${t('goalLinkLabel')}`}>
+          <div className="flex flex-wrap gap-2">
+            <Chip selected={boxId === null} onClick={() => setBoxId(null)}>
+              {t('goalLinkNone')}
+            </Chip>
+            {linkable.map((b) => (
+              <Chip key={b.id} selected={boxId === b.id} onClick={() => setBoxId(b.id)}>
+                {b.emoji} {b.name}
+              </Chip>
+            ))}
+          </div>
+        </Field>
+      )}
+      {boxId ? (
+        <p className="rounded-xl bg-card2 px-3 py-2.5 text-[12px] font-semibold text-ink2">
+          🔗 {t('goalLinkedHint')}
+        </p>
+      ) : (
+        <Field label={t('goalSavedLabel')}>
+          <input
+            className={`${inputCls} num`}
+            value={savedRaw}
+            onChange={(e) => setSavedRaw(e.target.value)}
+            inputMode="decimal"
+            placeholder={decimalSep === ',' ? '0,00' : '0.00'}
+          />
+        </Field>
+      )}
       <Field label={t('goalDateLabel')}>
         <input
           type="date"
