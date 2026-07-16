@@ -79,6 +79,14 @@ export interface CustomCategory {
   label: string
 }
 
+export interface TodoItem {
+  id: string
+  text: string
+  done: boolean
+  doneAt: string | null
+  createdAt: string
+}
+
 // A "caixinha": where stashed money actually sits (per currency).
 export interface VaultBox {
   id: string
@@ -122,6 +130,7 @@ export interface HouseholdSettings {
   vault?: VaultData
   // Notify (push/email) when AUD->BRL crosses this rate.
   fxAlert?: { target: number }
+  todos?: TodoItem[]
 }
 
 export interface Snapshot {

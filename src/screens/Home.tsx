@@ -29,11 +29,13 @@ export function Home({
   onProfile,
   onEditItem,
   onOpenAi,
+  onOpenSettings,
 }: {
   profile: Profile
   onProfile: (p: Profile) => void
   onEditItem: (item: Item) => void
   onOpenAi?: () => void
+  onOpenSettings?: () => void
 }) {
   const { snapshot, mode } = useAppData()
   const { t, locale } = useI18n()
@@ -208,15 +210,26 @@ export function Home({
             {snapshot.settings.nameA} & {snapshot.settings.nameB}
           </h1>
         </div>
-        {onOpenAi && (
-          <button
-            onClick={onOpenAi}
-            aria-label={t('aiTitle')}
-            className="press grad-accent flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-xl text-white shadow-md"
-          >
-            ✨
-          </button>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {onOpenAi && (
+            <button
+              onClick={onOpenAi}
+              aria-label={t('aiTitle')}
+              className="press grad-accent flex h-11 w-11 items-center justify-center rounded-2xl text-xl text-white shadow-md"
+            >
+              ✨
+            </button>
+          )}
+          {onOpenSettings && (
+            <button
+              onClick={onOpenSettings}
+              aria-label={t('settingsTitle')}
+              className="press flex h-11 w-11 items-center justify-center rounded-2xl border border-line bg-card text-xl"
+            >
+              ⚙️
+            </button>
+          )}
+        </div>
       </header>
 
       {empty ? (
