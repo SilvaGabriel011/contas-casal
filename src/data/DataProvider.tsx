@@ -237,6 +237,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   }, [mode, scheduleRefetch])
 
+  // Belt and braces: iOS also kills the socket silently while the app sits in
+  // the FOREGROUND (wifi/4G hops), with no event to hook. A slow poll keeps
+  // the two phones converging no matter what the socket is doing.
+  useEffect(() => {
+    if (mode !== 'cloud' || status !== 'ready') return
+    const id = setInterval(() => {
+      if (!document.hidden) refetch()
+    }, 45_000)
+    return () => clearInterval(id)
+  }, [mode, status, refetch])
+
   const chooseDemo = useCallback(() => {
     setMode('demo')
     setModeState('demo')

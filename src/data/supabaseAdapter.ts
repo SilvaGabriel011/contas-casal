@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Expense, HouseholdSettings, Income, Item, Payment, Snapshot, Transfer } from '../types'
 import type { CloudConfig } from '../lib/config'
 import { DEFAULT_SETTINGS, type DataAdapter } from './adapter'
+import { logError } from '../lib/errors'
 
 let client: SupabaseClient | null = null
 let clientKey = ''
@@ -385,20 +386,38 @@ export class SupabaseAdapter implements DataAdapter {
   }
 
   subscribe(onRemoteChange: () => void): () => void {
-    const channel = this.sb
-      .channel('cc-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, onRemoteChange)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'incomes' }, onRemoteChange)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, onRemoteChange)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, onRemoteChange)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'transfers' }, onRemoteChange)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, onRemoteChange)
-      // Events emitted while the socket was down are gone forever, so every
-      // (re)join must trigger a catch-up refetch.
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') onRemoteChange()
-      })
+    let disposed = false
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
+    let channel: ReturnType<SupabaseClient['channel']>
+
+    const join = () => {
+      channel = this.sb
+        .channel(`cc-sync-${Date.now()}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'items' }, onRemoteChange)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'incomes' }, onRemoteChange)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, onRemoteChange)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, onRemoteChange)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'transfers' }, onRemoteChange)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, onRemoteChange)
+        // Events emitted while the socket was down are gone forever, so every
+        // (re)join must trigger a catch-up refetch.
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') onRemoteChange()
+          // A stranded channel would mean silent stale data on this phone —
+          // log it (shows up in Ajustes > Diagnóstico) and rejoin fresh.
+          if ((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') && !disposed) {
+            logError('realtime', status)
+            this.sb.removeChannel(channel)
+            if (retryTimer) clearTimeout(retryTimer)
+            retryTimer = setTimeout(join, 8000)
+          }
+        })
+    }
+    join()
+
     return () => {
+      disposed = true
+      if (retryTimer) clearTimeout(retryTimer)
       this.sb.removeChannel(channel)
     }
   }

@@ -6,6 +6,7 @@ import { useAppData } from '../data/DataProvider'
 import { useI18n, type TKey } from '../lib/i18n'
 import { CAT_KEY, categoryEmoji } from '../lib/categories'
 import { AiQuickAdd } from './AiQuickAdd'
+import type { QuickDraft } from '../lib/ai'
 import { FREQ_EVERY, ITEM_KINDS, KIND_CONFIG } from '../lib/kinds'
 import { formatAmountInput, formatMoney, parseAmount } from '../lib/money'
 import { hourlyPerCycle } from '../lib/schedule'
@@ -76,6 +77,42 @@ export function AddSheet({
   const [receiptBlob, setReceiptBlob] = useState<Blob | null>(null)
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null)
   const [receiptRemoved, setReceiptRemoved] = useState(false)
+  const [aiFilled, setAiFilled] = useState(false)
+
+  // AI quick-add with a single result: fill every wizard step and jump to the
+  // end — the user just reviews and hits save.
+  const applyDraft = (d: QuickDraft) => {
+    setKindPreset(d.type)
+    setAmountRaw(formatAmountInput(d.amount, decimalSep))
+    setCurrency(d.currency)
+    setName(d.name ?? '')
+    setNotes(d.note ?? '')
+    if (d.category) setCategory(d.category)
+    setStartDate(d.date ?? todayISO())
+    if (d.type === 'income') {
+      setOwner(d.owner === 'b' ? 'b' : 'a')
+      setFrequency(d.frequency === 'weekly' || d.frequency === 'fortnightly' ? d.frequency : 'monthly')
+      setBasis('fixed')
+    } else {
+      setOwner(d.owner ?? 'shared')
+      if (d.type === 'expense') {
+        setPaidBy(d.paidBy ?? getDeviceOwner() ?? 'a')
+      } else {
+        const cfg = KIND_CONFIG[d.type]
+        const freq = ['weekly', 'fortnightly', 'monthly', 'yearly', 'once'].includes(d.frequency ?? '')
+          ? (d.frequency as Frequency)
+          : 'monthly'
+        setFrequency(cfg.forcedFrequency ?? freq)
+        if (d.type === 'installment') {
+          setInstMode('count')
+          setInstallments(String(d.installmentsTotal ?? 12))
+        }
+      }
+    }
+    setError('')
+    setAiFilled(true)
+    setStepIdx(99) // clamps to the final step
+  }
 
   useEffect(() => {
     if (!open) return
@@ -87,6 +124,7 @@ export function AddSheet({
     setReceiptBlob(null)
     setReceiptPreview(null)
     setReceiptRemoved(false)
+    setAiFilled(false)
     if (editExpense && mode === 'cloud') {
       getReceiptUrl(editExpense.id).then((url) => {
         if (url) setReceiptPreview(url)
@@ -385,6 +423,12 @@ export function AddSheet({
           </span>
         </div>
 
+        {aiFilled && (
+          <p className="anim-rise rounded-2xl bg-accent/10 px-4 py-2.5 text-[13px] font-bold text-accent">
+            ✨ {t('aiFilledBanner')}
+          </p>
+        )}
+
         {step === 'what' && (
           <div className="anim-rise space-y-4">
             <Segmented
@@ -415,7 +459,7 @@ export function AddSheet({
               </div>
             )}
 
-            <AiQuickAdd onDone={onClose} />
+            <AiQuickAdd onDone={onClose} onPrefill={applyDraft} />
           </div>
         )}
 

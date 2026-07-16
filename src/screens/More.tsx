@@ -14,6 +14,7 @@ export type MoreView =
   | 'goals'
   | 'wrapped'
   | 'vault'
+  | 'todos'
   | 'settings'
 
 interface MenuEntry {
