@@ -239,3 +239,21 @@ create policy "own receipts" on storage.objects
   for all
   using (bucket_id = 'receipts' and (storage.foldername(name))[1] = auth.uid()::text)
   with check (bucket_id = 'receipts' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- ============================================================================
+-- v4: máquina do tempo (backups automáticos)
+-- ============================================================================
+
+-- Um snapshot por dia por conta (cron da Vercel, api/backup); o app lista e
+-- restaura com um toque. Mantém os últimos 30.
+create table if not exists public.backups (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  taken_at timestamptz not null default now(),
+  data jsonb not null
+);
+alter table public.backups enable row level security;
+drop policy if exists "own backups" on public.backups;
+create policy "own backups" on public.backups
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create index if not exists backups_user_taken_idx on public.backups (user_id, taken_at desc);

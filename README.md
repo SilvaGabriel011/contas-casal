@@ -91,6 +91,15 @@ e use ele no `RESEND_FROM`.
 4. Faça redeploy, abra o app **instalado na tela de início** (iOS 16.4+) e ative em
    **Ajustes → Notificações no celular** em cada aparelho.
 
+## 💾 Backups automáticos
+
+Toda madrugada (~1h de Sydney) o cron `api/backup.ts` salva um snapshot completo por conta na
+tabela `backups` (últimos 30 dias). Restaurar: **Ajustes → Backups automáticos → toque na data**.
+Aos domingos, se `RESEND_API_KEY` estiver configurada e houver e-mails em Ajustes → Notificações,
+o JSON completo também chega **em anexo por e-mail** (cópia fora do Supabase). Usa as mesmas
+variáveis do push (`SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`) — só rode o `schema.sql` de novo
+pra criar a tabela.
+
 ## 📅 Calendário (Apple e Google)
 
 Em **Ajustes → Calendário → Ativar calendário sincronizado**, o app cria um link secreto de feed

@@ -1,6 +1,6 @@
 // The vault ("cofre"): where the couple's stashed money sits, split into
 // caixinhas. Pure helpers — persistence rides the settings JSON blob.
-import type { Currency, HouseholdSettings, Snapshot, VaultBox, VaultData } from '../types'
+import type { Currency, HouseholdSettings, SavingsGoal, Snapshot, VaultBox, VaultData } from '../types'
 import { endOfMonth, startOfMonth } from './dates'
 import { buildOccurrences, monthlyEquivalent } from './schedule'
 import { expensesFor, monthOf, totalsByCurrency } from './expenses'
@@ -51,6 +51,16 @@ export function coupleLeftover(snapshot: Snapshot, today: string): Partial<Recor
     if (income !== 0 || bills !== 0 || expenses !== 0) out[c] = income - bills - expenses
   }
   return out
+}
+
+// A goal linked to a vault box reads its saved amount straight from the box,
+// so stashing money and advancing the goal are one single action.
+export function goalSaved(goal: SavingsGoal, settings: HouseholdSettings): number {
+  if (goal.boxId) {
+    const box = getVault(settings).boxes.find((b) => b.id === goal.boxId)
+    if (box) return box.amount
+  }
+  return goal.saved
 }
 
 // What is still worth nudging about: leftover minus what was already stashed

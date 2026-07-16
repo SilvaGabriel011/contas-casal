@@ -3,7 +3,8 @@ import { useAppData } from '../data/DataProvider'
 import { getDeviceOwner, setDeviceOwner } from '../lib/device'
 import { useI18n, formatDay, type Lang } from '../lib/i18n'
 import { useTheme, type Theme } from '../lib/theme'
-import { formatMoney } from '../lib/money'
+import { formatMoney, parseAmount } from '../lib/money'
+import { getAudBrl } from '../lib/fx'
 import { buildRemindersIcs, icsEventCount, shareIcs } from '../lib/ics'
 import { clearErrorLog, errorReport, getErrorLog } from '../lib/errors'
 import { pushEnabled, pushSupported } from '../lib/push'
@@ -26,8 +27,10 @@ export function Settings() {
     disableCalendarFeed,
     enablePush,
     disablePush,
+    listBackups,
+    getBackup,
   } = useAppData()
-  const { t, lang, locale, setLang } = useI18n()
+  const { t, lang, locale, decimalSep, setLang } = useI18n()
   const { theme, setTheme } = useTheme()
 
   const [nameA, setNameA] = useState(snapshot.settings.nameA)
@@ -45,6 +48,52 @@ export function Settings() {
   const [notifyEmailsRaw, setNotifyEmailsRaw] = useState((snapshot.settings.notifyEmails ?? []).join(', '))
   const notifyEmailsDirty =
     notifyEmailsRaw.trim() !== (snapshot.settings.notifyEmails ?? []).join(', ').trim()
+
+  const [backups, setBackups] = useState<{ id: string; takenAt: string }[] | null>(null)
+  const [fxTargetRaw, setFxTargetRaw] = useState(
+    snapshot.settings.fxAlert ? String(snapshot.settings.fxAlert.target) : ''
+  )
+  const [fxNow, setFxNow] = useState<number | null>(null)
+  const fxDirty =
+    fxTargetRaw.trim() !== (snapshot.settings.fxAlert ? String(snapshot.settings.fxAlert.target) : '')
+
+  useEffect(() => {
+    if (mode === 'cloud') getAudBrl().then((info) => setFxNow(info?.rate ?? null))
+  }, [mode])
+
+  const saveFxAlert = async () => {
+    const target = parseAmount(fxTargetRaw, decimalSep)
+    if (fxTargetRaw.trim() === '' || target === null || target <= 0) {
+      const { fxAlert: _drop, ...rest } = snapshot.settings
+      await saveSettings(rest)
+      setFxTargetRaw('')
+    } else {
+      await saveSettings({ ...snapshot.settings, fxAlert: { target } })
+      setFxTargetRaw(String(target))
+    }
+  }
+
+  const restoreBackup = async (b: { id: string; takenAt: string }) => {
+    const when = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
+      new Date(b.takenAt)
+    )
+    if (!confirm(t('backupsConfirm', { when }))) return
+    const snapshot = await getBackup(b.id)
+    if (!snapshot || !Array.isArray(snapshot.items)) {
+      alert(t('importInvalid'))
+      return
+    }
+    const ok = await importSnapshot({
+      items: snapshot.items,
+      incomes: snapshot.incomes ?? [],
+      payments: snapshot.payments ?? [],
+      expenses: snapshot.expenses ?? [],
+      transfers: snapshot.transfers ?? [],
+      settings: snapshot.settings,
+    })
+    alert(ok ? t('backupsRestored') : t('importInvalid'))
+    setBackups(null)
+  }
 
   const saveNotifyEmails = async () => {
     const emails = notifyEmailsRaw
@@ -294,6 +343,50 @@ export function Settings() {
             }}
           />
         </label>
+
+        {mode === 'cloud' && (
+          <>
+            <button
+              onClick={async () => {
+                if (backups === null) {
+                  setBackups(await listBackups())
+                } else {
+                  setBackups(null)
+                }
+              }}
+              className="press w-full rounded-2xl border border-line py-3 text-[14px] font-semibold text-ink"
+            >
+              🕰️ {t('backupsTitle')}
+            </button>
+            {backups !== null && (
+              <div className="anim-rise space-y-1.5">
+                <p className="text-[12px] leading-relaxed text-ink2">{t('backupsHint')}</p>
+                {backups.length === 0 ? (
+                  <p className="rounded-xl bg-card2 px-3 py-2.5 text-[13px] font-semibold text-ink2">
+                    {t('backupsEmpty')}
+                  </p>
+                ) : (
+                  <div className="max-h-56 space-y-1 overflow-y-auto">
+                    {backups.map((b) => (
+                      <button
+                        key={b.id}
+                        onClick={() => restoreBackup(b)}
+                        className="press flex w-full items-center justify-between rounded-xl bg-card2 px-3 py-2.5 text-left"
+                      >
+                        <span className="text-[13px] font-semibold text-ink">
+                          {new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
+                            new Date(b.takenAt)
+                          )}
+                        </span>
+                        <span className="text-[12px] font-bold text-accent">{t('backupsRestore')}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
       </section>
 
       <section className="space-y-3 rounded-3xl border border-line bg-card p-5">
@@ -418,6 +511,32 @@ export function Settings() {
             {notifyEmailsDirty && (
               <button
                 onClick={saveNotifyEmails}
+                className="press mt-2 w-full rounded-2xl border border-accent py-2.5 text-[13px] font-bold text-accent"
+              >
+                {t('save')}
+              </button>
+            )}
+          </div>
+
+          <div className="border-t border-line pt-3">
+            <Field label={`💱 ${t('fxAlertLabel')}`}>
+              <input
+                className={`${inputCls} num`}
+                value={fxTargetRaw}
+                onChange={(e) => setFxTargetRaw(e.target.value)}
+                inputMode="decimal"
+                placeholder={decimalSep === ',' ? '3,60' : '3.60'}
+              />
+            </Field>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-ink2">
+              {t('fxAlertHint')}
+              {fxNow !== null && (
+                <span className="num font-bold"> {t('fxAlertNow', { r: fxNow.toFixed(2) })}</span>
+              )}
+            </p>
+            {fxDirty && (
+              <button
+                onClick={saveFxAlert}
                 className="press mt-2 w-full rounded-2xl border border-accent py-2.5 text-[13px] font-bold text-accent"
               >
                 {t('save')}

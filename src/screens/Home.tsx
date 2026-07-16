@@ -18,6 +18,8 @@ import { ownerLabel, personName } from '../lib/owners'
 import { SummaryCard } from '../components/SummaryCard'
 import { OccurrenceRow } from '../components/OccurrenceRow'
 import { VaultNudge } from '../components/VaultNudge'
+import { ForecastCard } from '../components/ForecastCard'
+import { goalSaved } from '../lib/vault'
 import { EmptyState } from '../components/ui'
 
 const AGENDA_DAYS = 30
@@ -182,7 +184,10 @@ export function Home({
     return remaining > 0 ? { lastDue, remaining, total } : null
   }, [snapshot.items, snapshot.payments])
 
-  const activeGoals = (snapshot.settings.goals ?? []).filter((g) => g.target > 0 && g.saved < g.target).slice(0, 2)
+  const activeGoals = (snapshot.settings.goals ?? [])
+    .map((g) => ({ goal: g, saved: goalSaved(g, snapshot.settings) }))
+    .filter(({ goal, saved }) => goal.target > 0 && saved < goal.target)
+    .slice(0, 2)
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? t('goodMorning') : hour < 18 ? t('goodAfternoon') : t('goodEvening')
@@ -308,6 +313,8 @@ export function Home({
               )
             })}
           </div>
+
+          <ForecastCard />
 
           <VaultNudge />
 
@@ -435,8 +442,8 @@ export function Home({
 
           {activeGoals.length > 0 && (
             <section className="space-y-2">
-              {activeGoals.map((g) => {
-                const ratio = Math.min(1, g.saved / g.target)
+              {activeGoals.map(({ goal: g, saved }) => {
+                const ratio = Math.min(1, saved / g.target)
                 return (
                   <div key={g.id} className="anim-rise rounded-2xl border border-line bg-card px-4 py-3">
                     <div className="flex items-baseline justify-between gap-2">
@@ -444,7 +451,7 @@ export function Home({
                         {g.emoji || '🐷'} {g.name}
                       </p>
                       <p className="num shrink-0 text-[12px] font-bold text-ink2">
-                        {formatMoneyShort(g.saved, g.currency, locale)} /{' '}
+                        {formatMoneyShort(saved, g.currency, locale)} /{' '}
                         {formatMoneyShort(g.target, g.currency, locale)}
                       </p>
                     </div>
