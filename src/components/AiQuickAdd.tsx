@@ -24,7 +24,13 @@ const TYPE_EMOJI: Record<QuickDraft['type'], string> = {
   income: '💰',
 }
 
-export function AiQuickAdd({ onDone }: { onDone: () => void }) {
+export function AiQuickAdd({
+  onDone,
+  onPrefill,
+}: {
+  onDone: () => void
+  onPrefill?: (d: QuickDraft) => void
+}) {
   const { snapshot, mode, getAccessToken, upsertItem, upsertIncome, upsertExpense } = useAppData()
   const { t, lang, locale } = useI18n()
   const [text, setText] = useState('')
@@ -52,6 +58,8 @@ export function AiQuickAdd({ onDone }: { onDone: () => void }) {
       if (!token) throw new Error('unauthorized')
       const result = await job(token)
       if (result.length === 0) setError(t('aiQuickNone'))
+      // One record: fill the whole wizard so the user just reviews and saves.
+      else if (result.length === 1 && onPrefill) onPrefill(result[0])
       else setDrafts(result)
     } catch (e) {
       logError(context, e)
