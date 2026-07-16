@@ -4,8 +4,10 @@ import { getDeviceOwner } from '../lib/device'
 import { CATEGORIES } from '../types'
 import { useAppData } from '../data/DataProvider'
 import { useI18n, type TKey } from '../lib/i18n'
-import { CAT_KEY, categoryEmoji } from '../lib/categories'
+import { CAT_KEY, categoryEmoji, categoryLabel } from '../lib/categories'
+import { ownerLabel, personName } from '../lib/owners'
 import { AiQuickAdd } from './AiQuickAdd'
+import type { QuickDraft } from '../lib/ai'
 import { FREQ_EVERY, ITEM_KINDS, KIND_CONFIG } from '../lib/kinds'
 import { formatAmountInput, formatMoney, parseAmount } from '../lib/money'
 import { hourlyPerCycle } from '../lib/schedule'
@@ -16,6 +18,15 @@ import { downscaleImage } from '../lib/image'
 import { Chip, Field, inputCls, Segmented, Sheet } from './ui'
 
 type FormKind = ItemKind | 'income' | 'expense'
+
+function ReviewRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="shrink-0 text-[12px] font-semibold text-ink2">{label}</span>
+      <span className="num min-w-0 text-right text-[14px] font-bold break-words text-ink">{value}</span>
+    </div>
+  )
+}
 
 export function AddSheet({
   open,
@@ -76,6 +87,42 @@ export function AddSheet({
   const [receiptBlob, setReceiptBlob] = useState<Blob | null>(null)
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null)
   const [receiptRemoved, setReceiptRemoved] = useState(false)
+  const [aiFilled, setAiFilled] = useState(false)
+
+  // AI quick-add with a single result: fill every wizard step and jump to the
+  // end — the user just reviews and hits save.
+  const applyDraft = (d: QuickDraft) => {
+    setKindPreset(d.type)
+    setAmountRaw(formatAmountInput(d.amount, decimalSep))
+    setCurrency(d.currency)
+    setName(d.name ?? '')
+    setNotes(d.note ?? '')
+    if (d.category) setCategory(d.category)
+    setStartDate(d.date ?? todayISO())
+    if (d.type === 'income') {
+      setOwner(d.owner === 'b' ? 'b' : 'a')
+      setFrequency(d.frequency === 'weekly' || d.frequency === 'fortnightly' ? d.frequency : 'monthly')
+      setBasis('fixed')
+    } else {
+      setOwner(d.owner ?? 'shared')
+      if (d.type === 'expense') {
+        setPaidBy(d.paidBy ?? getDeviceOwner() ?? 'a')
+      } else {
+        const cfg = KIND_CONFIG[d.type]
+        const freq = ['weekly', 'fortnightly', 'monthly', 'yearly', 'once'].includes(d.frequency ?? '')
+          ? (d.frequency as Frequency)
+          : 'monthly'
+        setFrequency(cfg.forcedFrequency ?? freq)
+        if (d.type === 'installment') {
+          setInstMode('count')
+          setInstallments(String(d.installmentsTotal ?? 12))
+        }
+      }
+    }
+    setError('')
+    setAiFilled(true)
+    setStepIdx(99) // clamps to the final step
+  }
 
   useEffect(() => {
     if (!open) return
@@ -87,6 +134,7 @@ export function AddSheet({
     setReceiptBlob(null)
     setReceiptPreview(null)
     setReceiptRemoved(false)
+    setAiFilled(false)
     if (editExpense && mode === 'cloud') {
       getReceiptUrl(editExpense.id).then((url) => {
         if (url) setReceiptPreview(url)
@@ -319,13 +367,14 @@ export function AddSheet({
           ? t('dueDate')
           : t(KIND_CONFIG[kind].dateLabelKey)
 
-  // Wizard: what -> value -> details -> extras (income has no extras step).
-  type WizardStep = 'what' | 'value' | 'details' | 'extras'
+  // Wizard: what -> value -> details -> extras -> review (income skips extras).
+  type WizardStep = 'what' | 'value' | 'details' | 'extras' | 'review'
   const steps: WizardStep[] = [
     ...(editing ? [] : (['what'] as WizardStep[])),
     'value',
     'details',
     ...(kind === 'income' ? [] : (['extras'] as WizardStep[])),
+    'review',
   ]
   const step = steps[Math.min(stepIdx, steps.length - 1)]
   const stepTitle: Record<WizardStep, TKey> = {
@@ -333,6 +382,7 @@ export function AddSheet({
     value: 'stepValue',
     details: 'stepDetails',
     extras: 'stepExtras',
+    review: 'stepReview',
   }
 
   const validateStep = (s: WizardStep): string | null => {
@@ -385,6 +435,12 @@ export function AddSheet({
           </span>
         </div>
 
+        {aiFilled && (
+          <p className="anim-rise rounded-2xl bg-accent/10 px-4 py-2.5 text-[13px] font-bold text-accent">
+            ✨ {t('aiFilledBanner')}
+          </p>
+        )}
+
         {step === 'what' && (
           <div className="anim-rise space-y-4">
             <Segmented
@@ -415,7 +471,7 @@ export function AddSheet({
               </div>
             )}
 
-            <AiQuickAdd onDone={onClose} />
+            <AiQuickAdd onDone={onClose} onPrefill={applyDraft} />
           </div>
         )}
 
@@ -743,6 +799,55 @@ export function AddSheet({
                 )}
               </Field>
             )}
+          </div>
+        )}
+
+        {step === 'review' && (
+          <div className="anim-rise space-y-2.5 rounded-2xl border border-line bg-card2 p-4">
+            <ReviewRow
+              label={t('reviewWhat')}
+              value={
+                kind === 'income'
+                  ? `💰 ${t('income')}`
+                  : kind === 'expense'
+                    ? `☕ ${t('quickExpense')}`
+                    : `${KIND_CONFIG[kind].emoji} ${t(KIND_CONFIG[kind].labelKey)}`
+              }
+            />
+            {kind !== 'expense' && <ReviewRow label={t('name')} value={name.trim() || '—'} />}
+            <ReviewRow
+              label={t('amount')}
+              value={
+                isHourlyIncome && cyclePay !== null
+                  ? `${formatMoney(rate ?? 0, currency, locale)}/h × ${weeklyHours}h = ${formatMoney(cyclePay, currency, locale)} ${t(FREQ_EVERY[incomeFrequency])}`
+                  : formatMoney(amount ?? 0, currency, locale)
+              }
+            />
+            {kind === 'installment' && amount !== null && (
+              <ReviewRow
+                label={t('numInstallments')}
+                value={`${nInstallments}x · ${t('totalOfPlan', { v: formatMoney(amount * nInstallments, currency, locale) })}`}
+              />
+            )}
+            {(kind === 'income' || showFrequency) && (
+              <ReviewRow
+                label={t('frequency')}
+                value={t((kind === 'income' ? incomeFrequency : frequency) as TKey)}
+              />
+            )}
+            <ReviewRow label={dateLabel} value={formatDay(startDate, locale)} />
+            <ReviewRow label={t('owner')} value={ownerLabel(owner, snapshot.settings, t)} />
+            {kind === 'expense' && (
+              <ReviewRow label={t('paidByLabel')} value={personName(paidBy, snapshot.settings)} />
+            )}
+            {kind !== 'income' && (
+              <ReviewRow
+                label={t('category')}
+                value={`${categoryEmoji(category, snapshot.settings)} ${categoryLabel(category, snapshot.settings, t)}`}
+              />
+            )}
+            {notes.trim() && <ReviewRow label={t('notes')} value={notes.trim()} />}
+            {receiptPreview && !receiptRemoved && <ReviewRow label={t('receiptLabel')} value="📷 ✓" />}
           </div>
         )}
 
