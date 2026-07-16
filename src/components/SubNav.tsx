@@ -8,7 +8,8 @@ export interface SubEntry {
   render: () => ReactNode
 }
 
-// A themed tab: chip sub-navigation on top, last choice remembered per device.
+// A themed tab: one dropdown to pick the sub-screen (native iOS picker — no
+// clipped chip row to scroll), last choice remembered per device.
 export function SubNav({ storageKey, entries }: { storageKey: string; entries: SubEntry[] }) {
   const { t } = useI18n()
   const [active, setActive] = useState(() => {
@@ -19,21 +20,28 @@ export function SubNav({ storageKey, entries }: { storageKey: string; entries: S
 
   return (
     <div>
-      <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pt-3 pb-1">
-        {entries.map((e) => (
-          <button
-            key={e.key}
-            onClick={() => {
-              setActive(e.key)
-              localStorage.setItem(storageKey, e.key)
-            }}
-            className={`press shrink-0 rounded-full border px-3.5 py-2 text-[13px] font-bold transition-colors ${
-              active === e.key ? 'border-accent bg-card text-ink shadow-sm' : 'border-line bg-card2 text-ink2'
-            }`}
-          >
-            {e.emoji} {t(e.labelKey)}
-          </button>
-        ))}
+      <div className="relative mt-3 mb-1">
+        <div className="flex items-center justify-between rounded-2xl border border-line bg-card px-4 py-3">
+          <span className="text-[16px] font-extrabold text-ink">
+            {entry.emoji} {t(entry.labelKey)}
+          </span>
+          <span className="text-[13px] font-bold text-ink2">▾</span>
+        </div>
+        <select
+          value={active}
+          onChange={(e) => {
+            setActive(e.target.value)
+            localStorage.setItem(storageKey, e.target.value)
+          }}
+          aria-label={t(entry.labelKey)}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        >
+          {entries.map((e) => (
+            <option key={e.key} value={e.key}>
+              {e.emoji} {t(e.labelKey)}
+            </option>
+          ))}
+        </select>
       </div>
       <div key={entry.key} className="anim-screen">
         {entry.render()}
