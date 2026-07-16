@@ -142,7 +142,7 @@ export function Settings() {
     setDirty(false)
   }
 
-  const importJson = (file: File) => {
+  const importJson = (file: File, merge = false) => {
     const reader = new FileReader()
     reader.onload = async () => {
       try {
@@ -154,15 +154,46 @@ export function Settings() {
         ) {
           throw new Error('shape')
         }
-        if (!confirm(t('importConfirm'))) return
-        const ok = await importSnapshot({
+        if (!confirm(t(merge ? 'importMergeConfirm' : 'importConfirm'))) return
+        const incoming = {
           items: parsed.items,
           incomes: parsed.incomes,
           payments: parsed.payments,
           expenses: Array.isArray(parsed.expenses) ? parsed.expenses : [],
           transfers: Array.isArray(parsed.transfers) ? parsed.transfers : [],
-          settings: { ...snapshot.settings, ...parsed.settings },
-        })
+        }
+        // Merge: ADD the file's records to what is already here (same ids are
+        // skipped) — the escape hatch for joining two accounts' data.
+        const mergeById = <T extends { id: string }>(current: T[], next: T[]): T[] => {
+          const seen = new Set(current.map((r) => r.id))
+          return [...current, ...next.filter((r) => r && typeof r.id === 'string' && !seen.has(r.id))]
+        }
+        const payload = merge
+          ? {
+              items: mergeById(snapshot.items, incoming.items),
+              incomes: mergeById(snapshot.incomes, incoming.incomes),
+              payments: mergeById(snapshot.payments, incoming.payments),
+              expenses: mergeById(snapshot.expenses, incoming.expenses),
+              transfers: mergeById(snapshot.transfers, incoming.transfers),
+              settings: {
+                ...snapshot.settings,
+                customCategories: mergeById(
+                  snapshot.settings.customCategories,
+                  parsed.settings?.customCategories ?? []
+                ),
+                goals: mergeById(snapshot.settings.goals ?? [], parsed.settings?.goals ?? []),
+                todos: mergeById(snapshot.settings.todos ?? [], parsed.settings?.todos ?? []),
+                vault: {
+                  boxes: mergeById(
+                    snapshot.settings.vault?.boxes ?? [],
+                    parsed.settings?.vault?.boxes ?? []
+                  ),
+                  savedByMonth: snapshot.settings.vault?.savedByMonth ?? {},
+                },
+              },
+            }
+          : { ...incoming, settings: { ...snapshot.settings, ...parsed.settings } }
+        const ok = await importSnapshot(payload)
         if (ok) alert(t('importDone'))
       } catch {
         alert(t('importInvalid'))
@@ -339,6 +370,20 @@ export function Settings() {
             onChange={(e) => {
               const f = e.target.files?.[0]
               if (f) importJson(f)
+              e.target.value = ''
+            }}
+          />
+        </label>
+
+        <label className="press block w-full cursor-pointer rounded-2xl border border-line py-3 text-center text-[14px] font-semibold text-ink">
+          🧩 {t('importMerge')}
+          <input
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) importJson(f, true)
               e.target.value = ''
             }}
           />
