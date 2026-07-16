@@ -10,7 +10,8 @@ import { AddSheet } from './components/AddSheet'
 import { Home } from './screens/Home'
 import { Items } from './screens/Items'
 import { IncomeScreen } from './screens/IncomeScreen'
-import { More, type MenuEntry } from './screens/More'
+import { Settings } from './screens/Settings'
+import { SubNav, type SubEntry } from './components/SubNav'
 import { ExpensesScreen } from './screens/ExpensesScreen'
 import { HistoryScreen } from './screens/HistoryScreen'
 import { SettleScreen } from './screens/SettleScreen'
@@ -104,7 +105,13 @@ function useAppBadge() {
 
 function Shell() {
   const { mode } = useAppData()
-  const [tab, setTab] = useState<Tab>('home')
+  const { t } = useI18n()
+  const [tab, setTabState] = useState<Tab>('today')
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const setTab = useCallback((next: Tab) => {
+    setSettingsOpen(false)
+    setTabState(next)
+  }, [])
   useAppBadge()
   const [aiOpen, setAiOpen] = useState(false)
   const [aiMessages, setAiMessages] = useState<AiMessage[]>(loadAiChat)
@@ -175,104 +182,73 @@ function Shell() {
     setSheetOpen(true)
   }, [])
 
-  const moreEntries: MenuEntry[] = [
+  // Themed tabs (concept B): everything has a logical home, "More" is gone.
+  const moneyEntries: SubEntry[] = [
     {
-      view: 'expenses',
+      key: 'bills',
+      emoji: '🧾',
+      labelKey: 'tabBills',
+      render: () => <Items profile={profile} onProfile={setProfile} onEditItem={openEditItem} />,
+    },
+    {
+      key: 'income',
+      emoji: '💰',
+      labelKey: 'tabIncome',
+      render: () => <IncomeScreen profile={profile} onProfile={setProfile} onEditIncome={openEditIncome} />,
+    },
+    {
+      key: 'expenses',
       emoji: '☕',
-      labelKey: 'menuExpenses',
-      hintKey: 'menuExpensesHint',
+      labelKey: 'chipExpenses',
       render: () => <ExpensesScreen onEditExpense={openEditExpense} />,
     },
-    {
-      view: 'history',
-      emoji: '🗓️',
-      labelKey: 'menuHistory',
-      hintKey: 'menuHistoryHint',
-      render: () => <HistoryScreen />,
-    },
-    {
-      view: 'settle',
-      emoji: '🤝',
-      labelKey: 'menuSettle',
-      hintKey: 'menuSettleHint',
-      render: () => <SettleScreen />,
-    },
-    {
-      view: 'transfers',
-      emoji: '✈️',
-      labelKey: 'menuTransfers',
-      hintKey: 'menuTransfersHint',
-      render: () => <TransfersScreen />,
-    },
-    {
-      view: 'charts',
-      emoji: '📊',
-      labelKey: 'menuCharts',
-      hintKey: 'menuChartsHint',
-      render: () => <ReportsScreen />,
-    },
-    {
-      view: 'todos',
-      emoji: '✅',
-      labelKey: 'menuTodos',
-      hintKey: 'menuTodosHint',
-      render: () => <TodosScreen />,
-    },
-    {
-      view: 'vault',
-      emoji: '🔐',
-      labelKey: 'menuVault',
-      hintKey: 'menuVaultHint',
-      render: () => <VaultScreen />,
-    },
-    {
-      view: 'goals',
-      emoji: '🐷',
-      labelKey: 'menuGoals',
-      hintKey: 'menuGoalsHint',
-      render: () => <GoalsScreen />,
-    },
-    {
-      view: 'reconcile',
-      emoji: '🏦',
-      labelKey: 'menuReconcile',
-      hintKey: 'menuReconcileHint',
-      render: () => <ReconcileScreen />,
-    },
-    {
-      view: 'tax',
-      emoji: '🧾',
-      labelKey: 'menuTax',
-      hintKey: 'menuTaxHint',
-      render: () => <TaxScreen />,
-    },
-    {
-      view: 'wrapped',
-      emoji: '🎁',
-      labelKey: 'menuWrapped',
-      hintKey: 'menuWrappedHint',
-      render: () => <WrappedScreen />,
-    },
+    { key: 'history', emoji: '🗓️', labelKey: 'menuHistory', render: () => <HistoryScreen /> },
+    { key: 'reconcile', emoji: '🏦', labelKey: 'chipReconcile', render: () => <ReconcileScreen /> },
+  ]
+
+  const planEntries: SubEntry[] = [
+    { key: 'vault', emoji: '🔐', labelKey: 'menuVault', render: () => <VaultScreen /> },
+    { key: 'goals', emoji: '🐷', labelKey: 'menuGoals', render: () => <GoalsScreen /> },
+    { key: 'charts', emoji: '📊', labelKey: 'menuCharts', render: () => <ReportsScreen /> },
+    { key: 'tax', emoji: '🧾', labelKey: 'chipTax', render: () => <TaxScreen /> },
+    { key: 'wrapped', emoji: '🎁', labelKey: 'menuWrapped', render: () => <WrappedScreen /> },
+  ]
+
+  const coupleEntries: SubEntry[] = [
+    { key: 'settle', emoji: '🤝', labelKey: 'chipSettle', render: () => <SettleScreen /> },
+    { key: 'transfers', emoji: '✈️', labelKey: 'chipTransfers', render: () => <TransfersScreen /> },
+    { key: 'todos', emoji: '✅', labelKey: 'menuTodos', render: () => <TodosScreen /> },
   ]
 
   return (
     <div className="min-h-dvh">
       <main className="mx-auto max-w-lg px-4 pt-[max(env(safe-area-inset-top),12px)] pb-36 min-[430px]:px-5">
-        <div key={tab} className="anim-screen">
-          {tab === 'home' && (
-            <Home
-              profile={profile}
-              onProfile={setProfile}
-              onEditItem={openEditItem}
-              onOpenAi={mode === 'cloud' ? () => setAiOpen(true) : undefined}
-            />
-          )}
-          {tab === 'items' && <Items profile={profile} onProfile={setProfile} onEditItem={openEditItem} />}
-          {tab === 'income' && (
-            <IncomeScreen profile={profile} onProfile={setProfile} onEditIncome={openEditIncome} />
-          )}
-          {tab === 'more' && <More extraEntries={moreEntries} />}
-        </div>
+        {settingsOpen ? (
+          <div className="anim-screen">
+            <button
+              onClick={() => setSettingsOpen(false)}
+              className="press mb-2 flex items-center gap-1 pt-2 text-[14px] font-bold text-ink2"
+            >
+              ← {t('back')}
+            </button>
+            <Settings />
+          </div>
+        ) : (
+          <div key={tab} className="anim-screen">
+            {tab === 'today' && (
+              <Home
+                profile={profile}
+                onProfile={setProfile}
+                onEditItem={openEditItem}
+                onOpenAi={mode === 'cloud' ? () => setAiOpen(true) : undefined}
+                onOpenSettings={() => setSettingsOpen(true)}
+              />
+            )}
+            {tab === 'money' && <SubNav storageKey="cc.subnav.money" entries={moneyEntries} />}
+            {tab === 'plan' && <SubNav storageKey="cc.subnav.plan" entries={planEntries} />}
+            {tab === 'couple' && <SubNav storageKey="cc.subnav.couple" entries={coupleEntries} />}
+          </div>
+        )}
       </main>
 
       <TabBar tab={tab} onTab={setTab} onAdd={openAdd} />
