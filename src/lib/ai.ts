@@ -115,6 +115,16 @@ export async function parseReceipt(
   return requestRecords({ mode: 'receipt', image: imageDataUrl, meta, lang }, accessToken)
 }
 
+// Screenshot ("print") of bills/statements -> full records for the review modal.
+export async function parseScreenshot(
+  imageDataUrl: string,
+  meta: QuickAddMeta,
+  lang: string,
+  accessToken: string
+): Promise<QuickDraft[]> {
+  return requestRecords({ mode: 'screenshot', image: imageDataUrl, meta, lang }, accessToken)
+}
+
 async function requestRecords(body: object, accessToken: string): Promise<QuickDraft[]> {
   const res = await fetch('/api/ai', {
     method: 'POST',

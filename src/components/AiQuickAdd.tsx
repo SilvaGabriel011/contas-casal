@@ -1,28 +1,20 @@
-import { useState } from 'react'
-import type { Income, Item } from '../types'
+import { useRef, useState } from 'react'
 import { CATEGORIES } from '../types'
 import { useAppData } from '../data/DataProvider'
 import { useI18n } from '../lib/i18n'
-import { formatMoney } from '../lib/money'
-import { categoryLabel } from '../lib/categories'
-import { KIND_CONFIG } from '../lib/kinds'
-import { getDeviceOwner } from '../lib/device'
 import { todayISO } from '../lib/dates'
-import { useRef } from 'react'
-import { parseQuickAdd, parseReceipt, type QuickAddMeta, type QuickDraft } from '../lib/ai'
+import {
+  parseQuickAdd,
+  parseReceipt,
+  parseScreenshot,
+  type QuickAddMeta,
+  type QuickDraft,
+} from '../lib/ai'
 import { useDictation } from '../lib/speech'
 import { downscaleImage } from '../lib/image'
 import { logError } from '../lib/errors'
+import { AiImportReview } from './AiImportReview'
 import { inputCls } from './ui'
-
-const TYPE_EMOJI: Record<QuickDraft['type'], string> = {
-  expense: '☕',
-  bill: '🧾',
-  subscription: '🔁',
-  installment: '💳',
-  purchase: '🛍️',
-  income: '💰',
-}
 
 export function AiQuickAdd({
   onDone,
@@ -31,14 +23,15 @@ export function AiQuickAdd({
   onDone: () => void
   onPrefill?: (d: QuickDraft) => void
 }) {
-  const { snapshot, mode, getAccessToken, upsertItem, upsertIncome, upsertExpense } = useAppData()
+  const { snapshot, mode, getAccessToken } = useAppData()
   const { t, lang, locale } = useI18n()
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [drafts, setDrafts] = useState<QuickDraft[] | null>(null)
+  const [review, setReview] = useState<QuickDraft[] | null>(null)
   const dictation = useDictation(locale, setText, () => setError(t('speechDenied')))
   const receiptRef = useRef<HTMLInputElement>(null)
+  const printRef = useRef<HTMLInputElement>(null)
 
   if (mode !== 'cloud') return null
 
@@ -49,18 +42,23 @@ export function AiQuickAdd({
     categories: [...CATEGORIES, ...snapshot.settings.customCategories.map((c) => c.id)],
   })
 
-  const parseWith = async (job: (token: string) => Promise<QuickDraft[]>, context: string) => {
+  const parseWith = async (
+    job: (token: string) => Promise<QuickDraft[]>,
+    context: string,
+    { alwaysReview = false } = {}
+  ) => {
     setBusy(true)
     setError('')
-    setDrafts(null)
     try {
       const token = await getAccessToken()
       if (!token) throw new Error('unauthorized')
       const result = await job(token)
       if (result.length === 0) setError(t('aiQuickNone'))
-      // One record: fill the whole wizard so the user just reviews and saves.
-      else if (result.length === 1 && onPrefill) onPrefill(result[0])
-      else setDrafts(result)
+      // One record typed by hand: fill the whole wizard so the user just
+      // reviews and saves. Prints and multi-record results open the summary
+      // modal instead — nothing is saved before the user confirms there.
+      else if (!alwaysReview && result.length === 1 && onPrefill) onPrefill(result[0])
+      else setReview(result)
     } catch (e) {
       logError(context, e)
       const code = (e as Error).message
@@ -82,85 +80,28 @@ export function AiQuickAdd({
     await parseWith((token) => parseQuickAdd(text, buildMeta(), lang, token), 'ai-parse')
   }
 
-  const scanReceipt = async (file: File) => {
-    if (busy) return
+  const toDataUrl = async (file: File) => {
     const blob = await downscaleImage(file, 1600, 0.8)
-    const dataUrl = await new Promise<string>((resolve, reject) => {
+    return new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = () => resolve(String(reader.result ?? ''))
       reader.onerror = () => reject(new Error('generic'))
       reader.readAsDataURL(blob)
     })
+  }
+
+  const scanReceipt = async (file: File) => {
+    if (busy) return
+    const dataUrl = await toDataUrl(file)
     await parseWith((token) => parseReceipt(dataUrl, buildMeta(), lang, token), 'ai-receipt')
   }
 
-  const addDraft = async (d: QuickDraft) => {
-    const today = todayISO()
-    const freq = ['weekly', 'fortnightly', 'monthly', 'yearly', 'once'].includes(d.frequency ?? '')
-      ? (d.frequency as Item['frequency'])
-      : 'monthly'
-    if (d.type === 'expense') {
-      await upsertExpense({
-        id: crypto.randomUUID(),
-        date: d.date ?? today,
-        amount: d.amount,
-        currency: d.currency,
-        category: d.category ?? 'other',
-        owner: d.owner ?? 'shared',
-        paidBy: d.paidBy ?? getDeviceOwner(),
-        note: d.note || d.name || null,
-        createdAt: new Date().toISOString(),
-      })
-    } else if (d.type === 'income') {
-      const income: Income = {
-        id: crypto.randomUUID(),
-        name: d.name || t('income'),
-        owner: d.owner === 'b' ? 'b' : 'a',
-        amount: d.amount,
-        currency: d.currency,
-        frequency: freq === 'weekly' || freq === 'fortnightly' ? freq : 'monthly',
-        nextDate: d.date ?? today,
-        active: true,
-        hourlyRate: null,
-        hoursPerDay: null,
-        daysPerWeek: null,
-        createdAt: new Date().toISOString(),
-      }
-      await upsertIncome(income)
-    } else {
-      const cfg = KIND_CONFIG[d.type]
-      await upsertItem({
-        id: crypto.randomUUID(),
-        kind: d.type,
-        name: d.name || categoryLabel(d.category ?? cfg.defaultCategory, snapshot.settings, t),
-        category: d.category ?? cfg.defaultCategory,
-        amount: d.amount,
-        currency: d.currency,
-        owner: d.owner ?? 'shared',
-        frequency: cfg.forcedFrequency ?? freq,
-        startDate: d.date ?? today,
-        installmentsTotal: d.type === 'installment' ? (d.installmentsTotal ?? 12) : null,
-        notes: d.note ?? null,
-        archived: false,
-        createdAt: new Date().toISOString(),
-      })
-    }
-  }
-
-  const addAll = async () => {
-    if (!drafts) return
-    setBusy(true)
-    try {
-      for (const d of drafts) await addDraft(d)
-      onDone()
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const draftLabel = (d: QuickDraft) => {
-    const what = d.name || d.note || categoryLabel(d.category ?? 'other', snapshot.settings, t)
-    return `${TYPE_EMOJI[d.type]} ${what} — ${formatMoney(d.amount, d.currency, locale)}`
+  const scanPrint = async (file: File) => {
+    if (busy) return
+    const dataUrl = await toDataUrl(file)
+    await parseWith((token) => parseScreenshot(dataUrl, buildMeta(), lang, token), 'ai-screenshot', {
+      alwaysReview: true,
+    })
   }
 
   return (
@@ -185,6 +126,17 @@ export function AiQuickAdd({
             e.target.value = ''
           }}
         />
+        <input
+          ref={printRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            if (f) scanPrint(f)
+            e.target.value = ''
+          }}
+        />
         <button
           onClick={() => receiptRef.current?.click()}
           disabled={busy}
@@ -192,6 +144,14 @@ export function AiQuickAdd({
           className="press flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-line bg-card text-lg disabled:opacity-50"
         >
           🧾
+        </button>
+        <button
+          onClick={() => printRef.current?.click()}
+          disabled={busy}
+          aria-label={t('aiPrintScan')}
+          className="press flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-line bg-card text-lg disabled:opacity-50"
+        >
+          📸
         </button>
         {dictation.supported && (
           <button
@@ -215,26 +175,12 @@ export function AiQuickAdd({
           {busy ? t('aiThinking') : t('aiQuickCreate')}
         </button>
       </div>
+      <p className="text-[11px] font-semibold text-ink2">📸 {t('aiPrintHint')}</p>
       {dictation.listening && (
         <p className="animate-pulse text-[12px] font-semibold text-accent">🎙️ {t('speechListening')}</p>
       )}
       {error && <p className="text-[13px] font-semibold text-bad">{error}</p>}
-      {drafts && (
-        <div className="space-y-1.5">
-          {drafts.map((d, i) => (
-            <p key={i} className="anim-rise rounded-xl bg-card px-3 py-2 text-[13px] font-semibold text-ink">
-              {draftLabel(d)}
-            </p>
-          ))}
-          <button
-            onClick={addAll}
-            disabled={busy}
-            className="press w-full rounded-xl border border-accent py-2.5 text-[14px] font-bold text-accent disabled:opacity-50"
-          >
-            ＋ {t('aiQuickAddAll', { n: drafts.length })}
-          </button>
-        </div>
-      )}
+      <AiImportReview drafts={review} onClose={() => setReview(null)} onDone={onDone} />
     </div>
   )
 }
