@@ -115,14 +115,15 @@ export async function parseReceipt(
   return requestRecords({ mode: 'receipt', image: imageDataUrl, meta, lang }, accessToken)
 }
 
-// Screenshot ("print") of bills/statements -> full records for the review modal.
+// Screenshots ("prints") of bills/statements -> full records for the review
+// modal. Several prints go in one request so the model can dedupe overlaps.
 export async function parseScreenshot(
-  imageDataUrl: string,
+  imageDataUrls: string[],
   meta: QuickAddMeta,
   lang: string,
   accessToken: string
 ): Promise<QuickDraft[]> {
-  return requestRecords({ mode: 'screenshot', image: imageDataUrl, meta, lang }, accessToken)
+  return requestRecords({ mode: 'screenshot', images: imageDataUrls, meta, lang }, accessToken)
 }
 
 async function requestRecords(body: object, accessToken: string): Promise<QuickDraft[]> {

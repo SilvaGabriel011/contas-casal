@@ -96,10 +96,12 @@ export function AiQuickAdd({
     await parseWith((token) => parseReceipt(dataUrl, buildMeta(), lang, token), 'ai-receipt')
   }
 
-  const scanPrint = async (file: File) => {
-    if (busy) return
-    const dataUrl = await toDataUrl(file)
-    await parseWith((token) => parseScreenshot(dataUrl, buildMeta(), lang, token), 'ai-screenshot', {
+  // Up to 6 prints per scan — they travel in one request so the AI can merge
+  // overlapping shots of the same list.
+  const scanPrints = async (files: File[]) => {
+    if (busy || files.length === 0) return
+    const dataUrls = await Promise.all(files.slice(0, 6).map(toDataUrl))
+    await parseWith((token) => parseScreenshot(dataUrls, buildMeta(), lang, token), 'ai-screenshot', {
       alwaysReview: true,
     })
   }
@@ -130,10 +132,11 @@ export function AiQuickAdd({
           ref={printRef}
           type="file"
           accept="image/*"
+          multiple
           className="hidden"
           onChange={(e) => {
-            const f = e.target.files?.[0]
-            if (f) scanPrint(f)
+            const files = Array.from(e.target.files ?? [])
+            if (files.length > 0) scanPrints(files)
             e.target.value = ''
           }}
         />

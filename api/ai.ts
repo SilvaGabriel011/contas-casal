@@ -63,6 +63,7 @@ export default async function handler(req: Request): Promise<Response> {
     mode?: string
     text?: string
     image?: string
+    images?: string[]
     meta?: { today?: string; nameA?: string; nameB?: string; categories?: string[] }
   }
   try {
@@ -125,8 +126,16 @@ export default async function handler(req: Request): Promise<Response> {
   // Screenshot ("print") of bills, statements or app screens -> full records
   // the user reviews in a summary modal before confirming.
   if (body.mode === 'screenshot') {
-    const image = String(body.image ?? '')
-    if (!image.startsWith('data:image/') || image.length > 2_500_000) return jsonError(400, 'bad-request')
+    // One or many prints in a single call — one OpenAI request sees them all,
+    // so overlapping shots can be deduplicated by the model.
+    const images = (Array.isArray(body.images) ? body.images : [body.image ?? '']).map(String)
+    if (images.length === 0 || images.length > 6) return jsonError(400, 'bad-request')
+    let totalSize = 0
+    for (const img of images) {
+      if (!img.startsWith('data:image/') || img.length > 2_500_000) return jsonError(400, 'bad-request')
+      totalSize += img.length
+    }
+    if (totalSize > 4_000_000) return jsonError(400, 'bad-request')
     const meta = body.meta ?? {}
     const screenshotSystem = [
       'You read screenshots ("prints") of financial content — bank/app statements, utility bills, invoices, card faturas, bill lists, spreadsheets or chat messages — for a household finance app used by a couple, and output strict JSON.',
@@ -139,6 +148,7 @@ export default async function handler(req: Request): Promise<Response> {
       'Dates: resolve to YYYY-MM-DD; a date without a year means its closest plausible occurrence; omit the date if unreadable.',
       'name = short readable name (merchant or bill). category = best guess from the valid ids.',
       'Read only what is visible — never invent amounts. Skip subtotal/total lines that just sum the other entries. If nothing extractable: {"records":[]}.',
+      'There may be several screenshots: extract from all of them, and if the same entry appears in more than one (overlapping shots of the same list), output it only once.',
     ].join('\n')
 
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -152,8 +162,8 @@ export default async function handler(req: Request): Promise<Response> {
           {
             role: 'user',
             content: [
-              { type: 'text', text: 'Extract every finance record from this screenshot.' },
-              { type: 'image_url', image_url: { url: image, detail: 'high' } },
+              { type: 'text', text: 'Extract every finance record from these screenshots.' },
+              ...images.map((img) => ({ type: 'image_url', image_url: { url: img, detail: 'high' } })),
             ],
           },
         ],
