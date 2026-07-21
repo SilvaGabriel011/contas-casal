@@ -122,6 +122,58 @@ export default async function handler(req: Request): Promise<Response> {
     }
   }
 
+  // Screenshot ("print") of bills, statements or app screens -> full records
+  // the user reviews in a summary modal before confirming.
+  if (body.mode === 'screenshot') {
+    const image = String(body.image ?? '')
+    if (!image.startsWith('data:image/') || image.length > 2_500_000) return jsonError(400, 'bad-request')
+    const meta = body.meta ?? {}
+    const screenshotSystem = [
+      'You read screenshots ("prints") of financial content — bank/app statements, utility bills, invoices, card faturas, bill lists, spreadsheets or chat messages — for a household finance app used by a couple, and output strict JSON.',
+      `Today is ${meta.today ?? 'unknown'}. Partner A is "${meta.nameA ?? 'A'}", partner B is "${meta.nameB ?? 'B'}".`,
+      `Valid category ids: ${(meta.categories ?? []).join(', ')}.`,
+      'Output ONLY a JSON object: {"records":[...]}. Each record:',
+      '{"type":"expense"|"bill"|"subscription"|"installment"|"purchase"|"income","name":string?,"note":string?,"amount":number,"currency":"AUD"|"BRL","category":string?,"owner":"a"|"b"|"shared"?,"paidBy":"a"|"b"?,"date":"YYYY-MM-DD"?,"frequency":"weekly"|"fortnightly"|"monthly"|"yearly"|"once"?,"installmentsTotal":number?}',
+      'One record per distinct charge, bill or line visible. Recurring obligations (rent, utilities, plans, streaming) -> bill or subscription with frequency and next due date. Brazilian card instalment lines (e.g. "3/10") -> installment with the per-instalment amount and installmentsTotal = the total count. Day-to-day money already spent -> expense (note = short description). Salary/pay lines -> income.',
+      'currency: "R$" or Brazilian number formatting (1.234,56) -> BRL; "$"/"A$" or Australian context -> AUD.',
+      'Dates: resolve to YYYY-MM-DD; a date without a year means its closest plausible occurrence; omit the date if unreadable.',
+      'name = short readable name (merchant or bill). category = best guess from the valid ids.',
+      'Read only what is visible — never invent amounts. Skip subtotal/total lines that just sum the other entries. If nothing extractable: {"records":[]}.',
+    ].join('\n')
+
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: screenshotSystem },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Extract every finance record from this screenshot.' },
+              { type: 'image_url', image_url: { url: image, detail: 'high' } },
+            ],
+          },
+        ],
+      }),
+    })
+    if (!res.ok) {
+      return jsonError(502, res.status === 401 ? 'invalid-openai-key' : 'upstream-error')
+    }
+    const data = await res.json()
+    const raw = data?.choices?.[0]?.message?.content ?? '{}'
+    try {
+      const parsed = JSON.parse(raw)
+      return new Response(JSON.stringify({ records: Array.isArray(parsed.records) ? parsed.records : [] }), {
+        headers: { 'content-type': 'application/json' },
+      })
+    } catch {
+      return jsonError(502, 'upstream-error')
+    }
+  }
+
   // Quick-add: turn a casual sentence into structured finance records.
   if (body.mode === 'parse') {
     const text = String(body.text ?? '').slice(0, 2000)
