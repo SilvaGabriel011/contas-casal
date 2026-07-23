@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Currency, Frequency, Income, Item, Owner } from '../types'
 import { CATEGORIES } from '../types'
 import { useAppData } from '../data/DataProvider'
@@ -10,7 +10,9 @@ import { getDeviceOwner } from '../lib/device'
 import { todayISO } from '../lib/dates'
 import type { QuickDraft } from '../lib/ai'
 import { logError } from '../lib/errors'
-import { inputCls, Segmented, Sheet } from './ui'
+import type { DupCandidate, DupMatch } from '../lib/duplicates'
+import { findDuplicates } from '../lib/duplicates'
+import { inputCls, ProgressBar, Segmented, Sheet } from './ui'
 
 const TYPE_EMOJI: Record<QuickDraft['type'], string> = {
   expense: '☕',
@@ -76,8 +78,11 @@ export function AiImportReview({
   const [rows, setRows] = useState<Row[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // row key -> existing record it duplicates; null means no prompt showing.
+  const [dup, setDup] = useState<Map<string, DupMatch> | null>(null)
 
   useEffect(() => {
+    setDup(null)
     if (drafts) {
       setRows(drafts.map((d) => rowFromDraft(d, decimalSep)))
       setError('')
@@ -170,13 +175,11 @@ export function AiImportReview({
     await upsertItem(item)
   }
 
-  const confirmAll = async () => {
-    if (rows.some((r) => rowAmount(r) === null || (rowAmount(r) ?? 0) <= 0))
-      return setError(t('invalidAmount'))
+  const persistRows = async (toSave: Row[]) => {
     setBusy(true)
     setError('')
     try {
-      for (const r of rows) await saveRow(r)
+      for (const r of toSave) await saveRow(r)
       onDone()
     } catch (e) {
       logError('ai-import-confirm', e)
@@ -186,10 +189,66 @@ export function AiImportReview({
     }
   }
 
+  const candidateFromRow = (r: Row): DupCandidate => ({
+    type: r.type,
+    name: r.name.trim() || r.note.trim(),
+    amount: rowAmount(r) ?? 0,
+    currency: r.currency,
+    owner: r.type === 'income' ? (r.owner === 'b' ? 'b' : 'a') : r.owner,
+    date: r.date,
+    frequency:
+      r.type !== 'income' && r.type !== 'expense'
+        ? (KIND_CONFIG[r.type].forcedFrequency ?? r.frequency)
+        : r.frequency,
+  })
+
+  const confirmAll = async () => {
+    if (rows.some((r) => rowAmount(r) === null || (rowAmount(r) ?? 0) <= 0))
+      return setError(t('invalidAmount'))
+    setError('')
+    const matches = findDuplicates(rows.map(candidateFromRow), snapshot)
+    const found = new Map<string, DupMatch>()
+    rows.forEach((r, i) => {
+      const m = matches[i]
+      if (m) found.set(r.key, m)
+    })
+    if (found.size === 0) return persistRows(rows)
+    setDup(found)
+  }
+
+  const readdAll = () => {
+    setDup(null)
+    persistRows(rows)
+  }
+
+  const ignoreDups = () => {
+    const marks = dup
+    setDup(null)
+    const keep = marks ? rows.filter((r) => !marks.has(r.key)) : rows
+    if (keep.length === 0) return onDone()
+    persistRows(keep)
+  }
+
   const customCategories = snapshot.settings.customCategories
   const itemFreqOptions: Frequency[] = ['weekly', 'fortnightly', 'monthly', 'yearly', 'once']
   const incomeFreqOptions: Frequency[] = ['weekly', 'fortnightly', 'monthly']
   const selectCls = `${inputCls} appearance-none`
+
+  if (dup) {
+    const dupRows = rows.filter((r) => dup.has(r.key))
+    return (
+      <Sheet open={drafts !== null} onClose={onClose} title={`✨ ${t('aiDupTitle')}`}>
+        <DuplicatePrompt
+          rows={dupRows}
+          amountOf={rowAmount}
+          busy={busy}
+          error={error}
+          onReadd={readdAll}
+          onIgnore={ignoreDups}
+        />
+      </Sheet>
+    )
+  }
 
   return (
     <Sheet open={drafts !== null} onClose={onClose} title={`✨ ${t('aiReviewTitle')}`}>
@@ -368,5 +427,94 @@ export function AiImportReview({
         </div>
       </div>
     </Sheet>
+  )
+}
+
+const IGNORE_DELAY_MS = 15_000
+
+// Shown after confirm when some rows look already-added. "Ignorar" is the
+// default action: a progress bar fills over 15s and auto-triggers it.
+function DuplicatePrompt({
+  rows,
+  amountOf,
+  busy,
+  error,
+  onReadd,
+  onIgnore,
+}: {
+  rows: Row[]
+  amountOf: (r: Row) => number | null
+  busy: boolean
+  error: string
+  onReadd: () => void
+  onIgnore: () => void
+}) {
+  const { t, locale } = useI18n()
+  const [ratio, setRatio] = useState(0)
+  const fired = useRef(false)
+  const ignoreRef = useRef(onIgnore)
+  ignoreRef.current = onIgnore
+
+  useEffect(() => {
+    const start = Date.now()
+    const id = setInterval(() => {
+      const r = Math.min(1, (Date.now() - start) / IGNORE_DELAY_MS)
+      setRatio(r)
+      if (r >= 1 && !fired.current) {
+        fired.current = true
+        clearInterval(id)
+        ignoreRef.current()
+      }
+    }, 100)
+    return () => clearInterval(id)
+  }, [])
+
+  return (
+    <div className="space-y-3 pb-4">
+      <p className="text-[13px] font-semibold text-ink2">{t('aiDupMsg', { n: rows.length })}</p>
+
+      <div className="space-y-2">
+        {rows.map((r) => (
+          <div
+            key={r.key}
+            className="anim-rise flex items-center justify-between gap-3 rounded-2xl border border-line bg-card2 px-3.5 py-3"
+          >
+            <span className="truncate text-[14px] font-semibold text-ink">
+              {TYPE_EMOJI[r.type]}{' '}
+              {r.name.trim() ||
+                r.note.trim() ||
+                (r.type === 'income'
+                  ? t('income')
+                  : r.type === 'expense'
+                    ? t('quickExpense')
+                    : t(KIND_CONFIG[r.type].labelKey))}
+            </span>
+            <span className="num shrink-0 text-[14px] font-bold text-ink">
+              {formatMoney(amountOf(r) ?? 0, r.currency, locale)}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {error && <p className="text-sm font-semibold text-bad">{error}</p>}
+
+      <div className="flex gap-3 pt-1">
+        <button
+          onClick={onReadd}
+          disabled={busy}
+          className="press rounded-2xl border border-line px-5 py-3.5 text-[15px] font-bold text-ink2 disabled:opacity-50"
+        >
+          {t('aiDupReadd')}
+        </button>
+        <button
+          onClick={onIgnore}
+          disabled={busy}
+          className="press grad-accent flex-1 rounded-2xl px-5 py-3 text-[15px] font-bold text-white shadow-md disabled:opacity-50"
+        >
+          <span>{busy ? t('aiThinking') : t('aiDupIgnore')}</span>
+          <ProgressBar ratio={ratio} className="mt-2" />
+        </button>
+      </div>
+    </div>
   )
 }
