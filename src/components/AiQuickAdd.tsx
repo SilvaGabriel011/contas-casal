@@ -39,6 +39,7 @@ export function AiQuickAdd({
   const [error, setError] = useState('')
   const [drafts, setDrafts] = useState<QuickDraft[] | null>(null)
   const [excluded, setExcluded] = useState<Set<number>>(new Set())
+  const [scanNote, setScanNote] = useState('')
   const dictation = useDictation(locale, setText, () => setError(t('speechDenied')))
   const receiptRef = useRef<HTMLInputElement>(null)
 
@@ -97,16 +98,41 @@ export function AiQuickAdd({
     await parseWith((token) => parseQuickAdd(text, buildMeta(), lang, token), 'ai-parse')
   }
 
-  const scanReceipt = async (file: File) => {
-    if (busy) return
-    const blob = await downscaleImage(file, 1600, 0.8)
-    const dataUrl = await new Promise<string>((resolve, reject) => {
+  const blobToDataUrl = (blob: Blob) =>
+    new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = () => resolve(String(reader.result ?? ''))
       reader.onerror = () => reject(new Error('generic'))
       reader.readAsDataURL(blob)
     })
-    await parseWith((token) => parseReceipt(dataUrl, buildMeta(), lang, token), 'ai-receipt')
+
+  // Several receipts in one go: each photo is read separately and everything
+  // lands in the same confirmation list.
+  const MAX_RECEIPTS = 10
+
+  const scanReceipts = async (files: File[]) => {
+    if (busy || files.length === 0) return
+    const capped = files.slice(0, MAX_RECEIPTS)
+    const dataUrls: string[] = []
+    for (const f of capped) {
+      dataUrls.push(await blobToDataUrl(await downscaleImage(f, 1600, 0.8)))
+    }
+    await parseWith(async (token) => {
+      const all: QuickDraft[] = []
+      for (const [i, url] of dataUrls.entries()) {
+        if (dataUrls.length > 1) setScanNote(t('aiScanProgress', { a: i + 1, b: dataUrls.length }))
+        try {
+          all.push(...(await parseReceipt(url, buildMeta(), lang, token)))
+        } catch (e) {
+          // One unreadable photo shouldn't sink the batch.
+          if (dataUrls.length === 1) throw e
+          logError('ai-receipt', e)
+        }
+      }
+      setScanNote('')
+      return all
+    }, 'ai-receipt')
+    setScanNote('')
   }
 
   const addDraft = async (d: QuickDraft) => {
@@ -202,10 +228,11 @@ export function AiQuickAdd({
           ref={receiptRef}
           type="file"
           accept="image/*"
+          multiple
           className="hidden"
           onChange={(e) => {
-            const f = e.target.files?.[0]
-            if (f) scanReceipt(f)
+            const files = Array.from(e.target.files ?? [])
+            if (files.length > 0) scanReceipts(files)
             e.target.value = ''
           }}
         />
@@ -241,6 +268,9 @@ export function AiQuickAdd({
       </div>
       {dictation.listening && (
         <p className="animate-pulse text-[12px] font-semibold text-accent">🎙️ {t('speechListening')}</p>
+      )}
+      {scanNote && (
+        <p className="animate-pulse text-[12px] font-semibold text-accent">🧾 {scanNote}</p>
       )}
       {error && <p className="text-[13px] font-semibold text-bad">{error}</p>}
       {drafts && (
