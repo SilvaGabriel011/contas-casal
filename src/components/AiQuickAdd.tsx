@@ -10,6 +10,7 @@ import { getDeviceOwner } from '../lib/device'
 import { todayISO } from '../lib/dates'
 import { useRef } from 'react'
 import { parseQuickAdd, parseReceipt, type QuickAddMeta, type QuickDraft } from '../lib/ai'
+import { findSimilarExpense, findSimilarIncome, findSimilarItem } from '../lib/dupes'
 import { useDictation } from '../lib/speech'
 import { downscaleImage } from '../lib/image'
 import { logError } from '../lib/errors'
@@ -37,10 +38,20 @@ export function AiQuickAdd({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [drafts, setDrafts] = useState<QuickDraft[] | null>(null)
+  const [excluded, setExcluded] = useState<Set<number>>(new Set())
   const dictation = useDictation(locale, setText, () => setError(t('speechDenied')))
   const receiptRef = useRef<HTMLInputElement>(null)
 
   if (mode !== 'cloud') return null
+
+  // "Wasn't this already added?" — flags likely duplicates in the draft list
+  // and leaves them out of the bulk add unless the user taps them back in.
+  const draftDup = (d: QuickDraft): boolean => {
+    if (d.type === 'expense')
+      return findSimilarExpense(snapshot.expenses, d.amount, d.currency, d.date ?? todayISO()) !== null
+    if (d.type === 'income') return findSimilarIncome(snapshot.incomes, d.name ?? '') !== null
+    return findSimilarItem(snapshot.items, d.name ?? '', d.currency) !== null
+  }
 
   const buildMeta = (): QuickAddMeta => ({
     today: todayISO(),
@@ -58,9 +69,13 @@ export function AiQuickAdd({
       if (!token) throw new Error('unauthorized')
       const result = await job(token)
       if (result.length === 0) setError(t('aiQuickNone'))
-      // One record: fill the whole wizard so the user just reviews and saves.
+      // One record: fill the whole wizard so the user just reviews and saves
+      // (the review step runs its own duplicate warning).
       else if (result.length === 1 && onPrefill) onPrefill(result[0])
-      else setDrafts(result)
+      else {
+        setDrafts(result)
+        setExcluded(new Set(result.map((d, i) => (draftDup(d) ? i : -1)).filter((i) => i >= 0)))
+      }
     } catch (e) {
       logError(context, e)
       const code = (e as Error).message
@@ -151,11 +166,20 @@ export function AiQuickAdd({
     if (!drafts) return
     setBusy(true)
     try {
-      for (const d of drafts) await addDraft(d)
+      for (const [i, d] of drafts.entries()) {
+        if (!excluded.has(i)) await addDraft(d)
+      }
       onDone()
     } finally {
       setBusy(false)
     }
+  }
+
+  const toggleDraft = (i: number) => {
+    const next = new Set(excluded)
+    if (next.has(i)) next.delete(i)
+    else next.add(i)
+    setExcluded(next)
   }
 
   const draftLabel = (d: QuickDraft) => {
@@ -221,17 +245,31 @@ export function AiQuickAdd({
       {error && <p className="text-[13px] font-semibold text-bad">{error}</p>}
       {drafts && (
         <div className="space-y-1.5">
-          {drafts.map((d, i) => (
-            <p key={i} className="anim-rise rounded-xl bg-card px-3 py-2 text-[13px] font-semibold text-ink">
-              {draftLabel(d)}
-            </p>
-          ))}
+          {drafts.map((d, i) => {
+            const skipped = excluded.has(i)
+            return (
+              <button
+                key={i}
+                onClick={() => toggleDraft(i)}
+                className={`anim-rise block w-full rounded-xl px-3 py-2 text-left text-[13px] font-semibold transition-opacity ${
+                  skipped ? 'bg-card opacity-50' : 'bg-card text-ink'
+                }`}
+              >
+                <span className={skipped ? 'line-through' : ''}>{draftLabel(d)}</span>
+                {draftDup(d) && (
+                  <span className="mt-0.5 block text-[11px] font-bold text-bad">
+                    ⚠️ {skipped ? t('aiDupSkipped') : t('aiDupIncluded')}
+                  </span>
+                )}
+              </button>
+            )
+          })}
           <button
             onClick={addAll}
-            disabled={busy}
+            disabled={busy || drafts.length - excluded.size === 0}
             className="press w-full rounded-xl border border-accent py-2.5 text-[14px] font-bold text-accent disabled:opacity-50"
           >
-            ＋ {t('aiQuickAddAll', { n: drafts.length })}
+            ＋ {t('aiQuickAddAll', { n: drafts.length - excluded.size })}
           </button>
         </div>
       )}

@@ -15,6 +15,7 @@ import { buildRemindersIcs, icsEventCount, shareIcs } from '../lib/ics'
 import { formatDay } from '../lib/i18n'
 import { addMonthsClamped, monthsInclusive, todayISO } from '../lib/dates'
 import { downscaleImage } from '../lib/image'
+import { findSimilarExpense, findSimilarIncome, findSimilarItem } from '../lib/dupes'
 import { Chip, Field, inputCls, Segmented, Sheet } from './ui'
 
 type FormKind = ItemKind | 'income' | 'expense'
@@ -800,6 +801,27 @@ export function AddSheet({
               </Field>
             )}
           </div>
+        )}
+
+        {step === 'review' && !editing && (
+          <>
+            {(() => {
+              const dup =
+                kind === 'expense'
+                  ? findSimilarExpense(snapshot.expenses, amount ?? 0, currency, startDate)
+                  : kind === 'income'
+                    ? findSimilarIncome(snapshot.incomes, name)
+                    : findSimilarItem(snapshot.items, name, currency)
+              if (!dup) return null
+              const dupName = 'name' in dup && dup.name ? dup.name : t('quickExpense')
+              const dupAmount = formatMoney(dup.amount, dup.currency, locale)
+              return (
+                <p className="anim-rise rounded-2xl border border-bad/40 bg-bad/10 px-4 py-3 text-[13px] leading-snug font-bold text-ink">
+                  ⚠️ {t('dupWarn', { name: dupName, v: dupAmount })}
+                </p>
+              )
+            })()}
+          </>
         )}
 
         {step === 'review' && (
