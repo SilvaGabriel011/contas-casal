@@ -22,6 +22,30 @@ function jsonError(status: number, code: string): Response {
   })
 }
 
+type RecordsMeta = { today?: string; nameA?: string; nameB?: string; categories?: string[] }
+
+// Shared prompt for the modes that extract structured finance records the user
+// reviews before saving: image "prints" (screenshot) and extracted statement
+// text from PDFs/CSVs (statement). Only the opening sentence differs.
+function recordsSystem(meta: RecordsMeta, source: 'screenshot' | 'statement'): string {
+  const intro =
+    source === 'statement'
+      ? 'You read text extracted from bank/card statements, invoices or CSV exports (e.g. CommBank or Brazilian bank exports) for a household finance app used by a couple, and output strict JSON.'
+      : 'You read screenshots ("prints") of financial content — bank/app statements, utility bills, invoices, card faturas, bill lists, spreadsheets or chat messages — for a household finance app used by a couple, and output strict JSON.'
+  return [
+    intro,
+    `Today is ${meta.today ?? 'unknown'}. Partner A is "${meta.nameA ?? 'A'}", partner B is "${meta.nameB ?? 'B'}".`,
+    `Valid category ids: ${(meta.categories ?? []).join(', ')}.`,
+    'Output ONLY a JSON object: {"records":[...]}. Each record:',
+    '{"type":"expense"|"bill"|"subscription"|"installment"|"purchase"|"income","name":string?,"note":string?,"amount":number,"currency":"AUD"|"BRL","category":string?,"owner":"a"|"b"|"shared"?,"paidBy":"a"|"b"?,"date":"YYYY-MM-DD"?,"frequency":"weekly"|"fortnightly"|"monthly"|"yearly"|"once"?,"installmentsTotal":number?}',
+    'One record per distinct charge, bill or line. Recurring obligations (rent, utilities, plans, streaming) -> bill or subscription with frequency and next due date. Brazilian card instalment lines (e.g. "3/10") -> installment with the per-instalment amount and installmentsTotal = the total count. Day-to-day money already spent -> expense (note = short description). Salary/pay/deposit lines -> income.',
+    'currency: "R$" or Brazilian number formatting (1.234,56) -> BRL; "$"/"A$" or Australian context -> AUD.',
+    'Dates: resolve to YYYY-MM-DD; a date without a year means its closest plausible occurrence; omit the date if unreadable.',
+    'name = short readable name (merchant or bill). category = best guess from the valid ids.',
+    'Read only what is present — never invent amounts. Skip running-balance columns and subtotal/total lines that just sum the other entries. If nothing extractable: {"records":[]}.',
+  ].join('\n')
+}
+
 function systemPrompt(context: string, lang: string): string {
   const language = lang === 'pt' ? 'Brazilian Portuguese' : 'English'
   return [
@@ -128,18 +152,7 @@ export default async function handler(req: Request): Promise<Response> {
     const image = String(body.image ?? '')
     if (!image.startsWith('data:image/') || image.length > 2_500_000) return jsonError(400, 'bad-request')
     const meta = body.meta ?? {}
-    const screenshotSystem = [
-      'You read screenshots ("prints") of financial content — bank/app statements, utility bills, invoices, card faturas, bill lists, spreadsheets or chat messages — for a household finance app used by a couple, and output strict JSON.',
-      `Today is ${meta.today ?? 'unknown'}. Partner A is "${meta.nameA ?? 'A'}", partner B is "${meta.nameB ?? 'B'}".`,
-      `Valid category ids: ${(meta.categories ?? []).join(', ')}.`,
-      'Output ONLY a JSON object: {"records":[...]}. Each record:',
-      '{"type":"expense"|"bill"|"subscription"|"installment"|"purchase"|"income","name":string?,"note":string?,"amount":number,"currency":"AUD"|"BRL","category":string?,"owner":"a"|"b"|"shared"?,"paidBy":"a"|"b"?,"date":"YYYY-MM-DD"?,"frequency":"weekly"|"fortnightly"|"monthly"|"yearly"|"once"?,"installmentsTotal":number?}',
-      'One record per distinct charge, bill or line visible. Recurring obligations (rent, utilities, plans, streaming) -> bill or subscription with frequency and next due date. Brazilian card instalment lines (e.g. "3/10") -> installment with the per-instalment amount and installmentsTotal = the total count. Day-to-day money already spent -> expense (note = short description). Salary/pay lines -> income.',
-      'currency: "R$" or Brazilian number formatting (1.234,56) -> BRL; "$"/"A$" or Australian context -> AUD.',
-      'Dates: resolve to YYYY-MM-DD; a date without a year means its closest plausible occurrence; omit the date if unreadable.',
-      'name = short readable name (merchant or bill). category = best guess from the valid ids.',
-      'Read only what is visible — never invent amounts. Skip subtotal/total lines that just sum the other entries. If nothing extractable: {"records":[]}.',
-    ].join('\n')
+    const screenshotSystem = recordsSystem(meta, 'screenshot')
 
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -156,6 +169,39 @@ export default async function handler(req: Request): Promise<Response> {
               { type: 'image_url', image_url: { url: image, detail: 'high' } },
             ],
           },
+        ],
+      }),
+    })
+    if (!res.ok) {
+      return jsonError(502, res.status === 401 ? 'invalid-openai-key' : 'upstream-error')
+    }
+    const data = await res.json()
+    const raw = data?.choices?.[0]?.message?.content ?? '{}'
+    try {
+      const parsed = JSON.parse(raw)
+      return new Response(JSON.stringify({ records: Array.isArray(parsed.records) ? parsed.records : [] }), {
+        headers: { 'content-type': 'application/json' },
+      })
+    } catch {
+      return jsonError(502, 'upstream-error')
+    }
+  }
+
+  // Statement text: text extracted from a PDF or a CSV bank export -> full
+  // records the user reviews in the summary modal before confirming.
+  if (body.mode === 'statement') {
+    const text = String(body.text ?? '').slice(0, 20_000)
+    if (!text.trim()) return jsonError(400, 'bad-request')
+    const meta = body.meta ?? {}
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: recordsSystem(meta, 'statement') },
+          { role: 'user', content: text },
         ],
       }),
     })
