@@ -7,11 +7,13 @@ import {
   parseQuickAdd,
   parseReceipt,
   parseScreenshot,
+  parseStatement,
   type QuickAddMeta,
   type QuickDraft,
 } from '../lib/ai'
 import { useDictation } from '../lib/speech'
 import { downscaleImage } from '../lib/image'
+import { extractPdfText } from '../lib/pdf'
 import { logError } from '../lib/errors'
 import { AiImportReview } from './AiImportReview'
 import { inputCls } from './ui'
@@ -32,6 +34,8 @@ export function AiQuickAdd({
   const dictation = useDictation(locale, setText, () => setError(t('speechDenied')))
   const receiptRef = useRef<HTMLInputElement>(null)
   const printRef = useRef<HTMLInputElement>(null)
+  const pdfRef = useRef<HTMLInputElement>(null)
+  const csvRef = useRef<HTMLInputElement>(null)
 
   if (mode !== 'cloud') return null
 
@@ -104,6 +108,34 @@ export function AiQuickAdd({
     })
   }
 
+  const scanPdf = async (file: File) => {
+    if (busy) return
+    setBusy(true)
+    setError('')
+    let extracted = ''
+    try {
+      extracted = await extractPdfText(file)
+    } catch (e) {
+      logError('ai-pdf', e)
+      setBusy(false)
+      return setError(t('aiPdfNoText'))
+    }
+    setBusy(false)
+    if (extracted.length < 20) return setError(t('aiPdfNoText'))
+    await parseWith((token) => parseStatement(extracted, buildMeta(), lang, token), 'ai-pdf', {
+      alwaysReview: true,
+    })
+  }
+
+  const importCsv = async (file: File) => {
+    if (busy) return
+    const csv = await file.text()
+    if (!csv.trim()) return setError(t('aiQuickNone'))
+    await parseWith((token) => parseStatement(csv, buildMeta(), lang, token), 'ai-csv', {
+      alwaysReview: true,
+    })
+  }
+
   return (
     <div className="space-y-2 rounded-2xl border border-dashed border-accent/50 bg-card2 p-3">
       <p className="text-[13px] font-bold text-ink">✨ {t('aiQuickTitle')}</p>
@@ -137,6 +169,28 @@ export function AiQuickAdd({
             e.target.value = ''
           }}
         />
+        <input
+          ref={pdfRef}
+          type="file"
+          accept="application/pdf,.pdf"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            if (f) scanPdf(f)
+            e.target.value = ''
+          }}
+        />
+        <input
+          ref={csvRef}
+          type="file"
+          accept=".csv,text/csv,text/plain"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            if (f) importCsv(f)
+            e.target.value = ''
+          }}
+        />
         <button
           onClick={() => receiptRef.current?.click()}
           disabled={busy}
@@ -152,6 +206,22 @@ export function AiQuickAdd({
           className="press flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-line bg-card text-lg disabled:opacity-50"
         >
           📸
+        </button>
+        <button
+          onClick={() => pdfRef.current?.click()}
+          disabled={busy}
+          aria-label={t('aiPdfScan')}
+          className="press flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-line bg-card text-lg disabled:opacity-50"
+        >
+          📄
+        </button>
+        <button
+          onClick={() => csvRef.current?.click()}
+          disabled={busy}
+          aria-label={t('aiCsvImport')}
+          className="press flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-line bg-card text-lg disabled:opacity-50"
+        >
+          🏦
         </button>
         {dictation.supported && (
           <button

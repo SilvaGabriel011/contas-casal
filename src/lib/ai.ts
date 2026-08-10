@@ -125,6 +125,17 @@ export async function parseScreenshot(
   return requestRecords({ mode: 'screenshot', image: imageDataUrl, meta, lang }, accessToken)
 }
 
+// Text extracted from a PDF or CSV bank statement -> full records for the
+// review modal.
+export async function parseStatement(
+  text: string,
+  meta: QuickAddMeta,
+  lang: string,
+  accessToken: string
+): Promise<QuickDraft[]> {
+  return requestRecords({ mode: 'statement', text, meta, lang }, accessToken)
+}
+
 async function requestRecords(body: object, accessToken: string): Promise<QuickDraft[]> {
   const res = await fetch('/api/ai', {
     method: 'POST',
