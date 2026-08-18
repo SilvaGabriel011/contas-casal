@@ -22,13 +22,16 @@
   --chart-2: #0d9488;
 }
 
+/* Dark surfaces need real steps between bg → card → card-2, brighter
+   secondary text and stronger borders — subtle values that work on light
+   wash out completely on an OLED black iPhone screen. */
 .dark {
   --bg: #0b0e13;
-  --card: #161b23;
-  --card-2: #1d232d;
+  --card: #1a212b;
+  --card-2: #29323f;
   --ink: #eef1f6;
-  --ink-2: #8b94a5;
-  --line: rgba(255, 255, 255, 0.09);
+  --ink-2: #a2acbe;
+  --line: rgba(255, 255, 255, 0.16);
   --accent: #8d7bff;
   --accent-2: #ff6d96;
   --good: #34d399;
