@@ -144,7 +144,9 @@ export function AiImportReview({
         amount,
         currency: r.currency,
         frequency:
-          r.frequency === 'weekly' || r.frequency === 'fortnightly' ? r.frequency : 'monthly',
+          r.frequency === 'weekly' || r.frequency === 'fortnightly' || r.frequency === 'once'
+            ? r.frequency
+            : 'monthly',
         nextDate: r.date,
         active: true,
         hourlyRate: null,
@@ -231,7 +233,7 @@ export function AiImportReview({
 
   const customCategories = snapshot.settings.customCategories
   const itemFreqOptions: Frequency[] = ['weekly', 'fortnightly', 'monthly', 'yearly', 'once']
-  const incomeFreqOptions: Frequency[] = ['weekly', 'fortnightly', 'monthly']
+  const incomeFreqOptions: Frequency[] = ['weekly', 'fortnightly', 'monthly', 'once']
   const selectCls = `${inputCls} appearance-none`
 
   if (dup) {
@@ -361,7 +363,7 @@ export function AiImportReview({
                   >
                     {(r.type === 'income' ? incomeFreqOptions : itemFreqOptions).map((f) => (
                       <option key={f} value={f}>
-                        {t(FREQ_EVERY[f])}
+                        {r.type === 'income' && f === 'once' ? t('onceIncome') : t(FREQ_EVERY[f])}
                       </option>
                     ))}
                   </select>
