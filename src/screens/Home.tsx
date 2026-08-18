@@ -2,14 +2,14 @@ import { useMemo } from 'react'
 import type { Currency, Income, Item, Occurrence, Profile } from '../types'
 import { useAppData } from '../data/DataProvider'
 import { useI18n, formatDay } from '../lib/i18n'
-import { formatMoney, formatMoneyShort } from '../lib/money'
+import { formatMoney } from '../lib/money'
 import { addDays, daysBetween, endOfMonth, parseDate, startOfMonth, todayISO } from '../lib/dates'
 import { buildOccurrences, incomeDates, monthlyEquivalent, visibleToProfile } from '../lib/schedule'
 import { expensesFor, monthOf, totalsByCurrency } from '../lib/expenses'
 import { ownerLabel, personName } from '../lib/owners'
 import { SummaryCard } from '../components/SummaryCard'
 import { OccurrenceRow } from '../components/OccurrenceRow'
-import { EmptyState } from '../components/ui'
+import { EmptyState, Segmented } from '../components/ui'
 
 const AGENDA_DAYS = 30
 
@@ -33,33 +33,9 @@ export function Home({
   const allItems = useMemo(() => snapshot.items.filter((i) => !i.archived), [snapshot.items])
   const allIncomes = useMemo(() => snapshot.incomes.filter((i) => i.active), [snapshot.incomes])
 
-  // The trio: one glance card per scope (each partner + the couple). The
-  // headline is the estimated leftover per currency; below it, how many of
-  // the month's bills are already paid.
-  const trio = useMemo(() => {
-    return (['a', 'b', 'shared'] as Profile[]).map((p) => {
-      const items = allItems.filter((i) => visibleToProfile(i.owner, p))
-      const incomes = allIncomes.filter((i) => visibleToProfile(i.owner, p))
-      const occs = buildOccurrences(items, snapshot.payments, startOfMonth(today), endOfMonth(today))
-      const paid = occs.filter((o) => o.payment).length
-      const expenses = totalsByCurrency(expensesFor(snapshot.expenses, monthOf(today), p))
-      const leftover: [Currency, number][] = []
-      for (const c of ['AUD', 'BRL'] as Currency[]) {
-        const income = incomes
-          .filter((i) => i.currency === c)
-          .reduce((s, i) => s + monthlyEquivalent(i.amount, i.frequency), 0)
-        const bills = occs
-          .filter((o) => o.item.currency === c)
-          .reduce((s, o) => s + (o.payment?.amount ?? o.item.amount), 0)
-        const spent = expenses[c] ?? 0
-        if (income !== 0 || bills !== 0 || spent !== 0) leftover.push([c, income - bills - spent])
-      }
-      return { p, paid, total: occs.length, leftover }
-    })
-  }, [allItems, allIncomes, snapshot.payments, snapshot.expenses, today])
-
   // Month summary for the selected profile — always visible, one card per
-  // currency in use.
+  // currency in use. The SummaryCard is the ONLY place on this screen that
+  // shows money values; everything else is selection or schedule.
   const items = useMemo(
     () => allItems.filter((i) => visibleToProfile(i.owner, profile)),
     [allItems, profile]
@@ -189,54 +165,16 @@ export function Home({
         <EmptyState emoji="✨" title={t('emptyHomeTitle')} body={t('emptyHomeBody')} />
       ) : (
         <>
-          <div className="grid grid-cols-3 gap-2">
-            {trio.map((c, i) => {
-              const selected = profile === c.p
-              const name = c.p === 'shared' ? t('couple') : personName(c.p, snapshot.settings)
-              return (
-                <button
-                  key={c.p}
-                  onClick={() => onProfile(c.p)}
-                  className={`press anim-rise rounded-2xl border p-3 text-center transition-all ${
-                    selected ? 'border-accent bg-card shadow-sm' : 'border-line bg-card2'
-                  }`}
-                  style={{ animationDelay: `${i * 60}ms` }}
-                >
-                  <span className="block truncate text-[12px] font-bold text-ink">
-                    {c.p === 'shared' ? '💞 ' : ''}
-                    {name}
-                  </span>
-                  <span className="mt-1.5 block">
-                    {c.leftover.length === 0 ? (
-                      <span className="num block text-[15px] font-extrabold text-ink2">—</span>
-                    ) : (
-                      c.leftover.map(([cur, v], j) => (
-                        <span
-                          key={cur}
-                          className={`num block ${j === 0 ? 'text-[15px] font-extrabold' : 'text-[12px] font-semibold'} ${
-                            v < 0 ? 'text-bad' : 'text-ink'
-                          }`}
-                        >
-                          {v >= 0 ? '+' : ''}
-                          {formatMoneyShort(v, cur, locale)}
-                        </span>
-                      ))
-                    )}
-                  </span>
-                  <span className="block text-[11px] text-ink2">{t('trioLeft')}</span>
-                  {c.total > 0 && (
-                    <span
-                      className={`mt-1 block text-[10px] font-bold ${
-                        c.paid === c.total ? 'text-good' : 'text-ink2'
-                      }`}
-                    >
-                      {c.paid === c.total ? '✓ ' : ''}
-                      {t('trioPaid', { k: c.paid, n: c.total })}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
+          <div className="anim-rise">
+            <Segmented<Profile>
+              options={[
+                { value: 'a', label: personName('a', snapshot.settings) },
+                { value: 'b', label: personName('b', snapshot.settings) },
+                { value: 'shared', label: `💞 ${t('couple')}` },
+              ]}
+              value={profile}
+              onChange={onProfile}
+            />
           </div>
 
           <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4">
@@ -259,53 +197,52 @@ export function Home({
             )}
           </div>
 
-          <div className="anim-rise flex gap-1.5">
-            {week.map((d) => {
-              const isToday = d.date === today
-              return (
-                <button
-                  key={d.date}
-                  onClick={() => scrollToDay(d.date)}
-                  className={`press flex-1 rounded-xl border py-1.5 text-center ${
-                    isToday ? 'border-accent bg-card shadow-sm' : 'border-line bg-card2'
-                  }`}
-                >
-                  <span className="block text-[10px] font-semibold text-ink2">{weekdayLetter(d.date)}</span>
-                  <span className={`num block text-[14px] font-extrabold ${isToday ? 'text-accent' : 'text-ink'}`}>
-                    {Number(d.date.slice(8, 10))}
-                  </span>
-                  <span className="flex h-2 items-center justify-center gap-0.5">
-                    {d.due && <span className="h-1.5 w-1.5 rounded-full bg-bad/70" />}
-                    {d.pay && <span className="h-1.5 w-1.5 rounded-full bg-good" />}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-
-          {overdue.length > 0 && (
-            <section>
-              <h2 className="mb-2 px-1 text-[13px] font-extrabold tracking-wide text-bad uppercase">
-                ⚠️ {t('overdue')}
-              </h2>
-              <div className="divide-y divide-line rounded-2xl border border-bad/30 bg-card">
-                {overdue.map((o, i) => (
-                  <OccurrenceRow
-                    key={`${o.item.id}|${o.dueDate}`}
-                    occ={o}
-                    profile="shared"
-                    onEdit={() => onEditItem(o.item)}
-                    style={{ animationDelay: `${Math.min(i * 45, 300)}ms` }}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-
           <section>
             <h2 className="mb-2 px-1 text-[13px] font-extrabold tracking-wide text-ink2 uppercase">
               {t('agendaCouple')}
             </h2>
+
+            <div className="anim-rise mb-3 flex gap-1.5">
+              {week.map((d) => {
+                const isToday = d.date === today
+                return (
+                  <button
+                    key={d.date}
+                    onClick={() => scrollToDay(d.date)}
+                    className={`press flex-1 rounded-xl border py-1.5 text-center ${
+                      isToday ? 'border-accent bg-card shadow-sm' : 'border-line bg-card2'
+                    }`}
+                  >
+                    <span className="block text-[10px] font-semibold text-ink2">{weekdayLetter(d.date)}</span>
+                    <span className={`num block text-[14px] font-extrabold ${isToday ? 'text-accent' : 'text-ink'}`}>
+                      {Number(d.date.slice(8, 10))}
+                    </span>
+                    <span className="flex h-2 items-center justify-center gap-0.5">
+                      {d.due && <span className="h-1.5 w-1.5 rounded-full bg-bad/70" />}
+                      {d.pay && <span className="h-1.5 w-1.5 rounded-full bg-good" />}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {overdue.length > 0 && (
+              <div className="anim-rise mb-3">
+                <p className="mb-1 px-1 text-[12px] font-bold text-bad">⚠️ {t('overdue')}</p>
+                <div className="divide-y divide-line rounded-2xl border border-bad/30 bg-card">
+                  {overdue.map((o, i) => (
+                    <OccurrenceRow
+                      key={`${o.item.id}|${o.dueDate}`}
+                      occ={o}
+                      profile="shared"
+                      onEdit={() => onEditItem(o.item)}
+                      style={{ animationDelay: `${Math.min(i * 45, 300)}ms` }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
             {agendaDays.length === 0 ? (
               <EmptyState emoji="🌴" title={t('noUpcoming')} />
             ) : (
