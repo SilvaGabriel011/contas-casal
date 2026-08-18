@@ -25,6 +25,7 @@ import { Welcome } from './screens/Welcome'
 import { AiChat } from './screens/AiChat'
 import { LockScreen } from './components/LockScreen'
 import { isLockEnabled } from './lib/applock'
+import { saveHintKey } from './lib/errors'
 
 const PROFILE_KEY = 'cc.profile'
 
@@ -73,12 +74,16 @@ function SaveErrorBanner() {
   const { saveError, dismissSaveError } = useAppData()
   const { t } = useI18n()
   if (!saveError) return null
+  // Never a bare "connection error": the hint says what actually happened
+  // and the raw code/message rides along for the diagnostics.
+  const hint = saveHintKey(saveError)
   return (
     <button
       onClick={dismissSaveError}
       className="anim-rise fixed inset-x-4 top-[max(env(safe-area-inset-top),12px)] z-50 rounded-2xl bg-bad px-4 py-3 text-left text-[13px] font-bold text-white shadow-lg"
     >
-      ⚠️ {t('saveFailed')}
+      <span className="block">⚠️ {t(hint ?? 'saveFailed')}</span>
+      <span className="num mt-1 block text-[11px] font-semibold break-words opacity-85">{saveError}</span>
     </button>
   )
 }

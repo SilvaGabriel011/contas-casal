@@ -21,6 +21,7 @@ const pt = {
     errWeakPassword: 'Senha curta demais pro projeto — use o PIN (recomendado) ou uma senha maior.',
     errSignupsDisabled: 'Cadastro de novas contas está desativado neste projeto (Authentication → Sign In / Up no Supabase).',
     errNetwork: 'Sem conexão com o servidor — confere a internet e tenta de novo.',
+    errSchemaOutdated: 'O servidor recusou o dado — o banco está numa versão antiga. Cole o supabase/schema.sql no SQL Editor do Supabase e rode de novo.',
     errInvalidEmail: 'Esse e-mail não parece válido — confere a digitação.',
     errFeedFailed: 'Não deu pra ativar o calendário — confirme que o schema.sql mais recente foi rodado no Supabase.',
     // diagnostics
@@ -178,6 +179,7 @@ const pt = {
     agendaCouple: 'Agenda do casal',
     diagBuild: 'Versão instalada',
     appVersion: 'Versão {v}',
+    diagRemote: 'Erros dos dois celulares',
     // cofre
     menuVault: 'Cofre',
     menuVaultHint: 'O que vocês têm guardado, por caixinha',
@@ -546,6 +548,7 @@ const en = {
     errWeakPassword: 'Password too short for this project — use the PIN (recommended) or a longer password.',
     errSignupsDisabled: 'New sign-ups are disabled on this project (Authentication → Sign In / Up in Supabase).',
     errNetwork: 'No connection to the server — check your internet and try again.',
+    errSchemaOutdated: 'The server rejected the data — the database is on an older version. Paste supabase/schema.sql into the Supabase SQL Editor and run it again.',
     errInvalidEmail: "That email doesn't look valid — double-check the typing.",
     errFeedFailed: "Couldn't enable the calendar — make sure the latest schema.sql was run on Supabase.",
     diagTitle: 'Diagnostics',
@@ -692,6 +695,7 @@ const en = {
     agendaCouple: 'Couple agenda',
     diagBuild: 'Installed build',
     appVersion: 'Version {v}',
+    diagRemote: 'Errors from both phones',
     menuVault: 'Vault',
     menuVaultHint: 'What you have stashed, box by box',
     vaultIntro: 'Track where the stashed money sits — emergency, masters, BRL in Brazil — and how it is distributed.',

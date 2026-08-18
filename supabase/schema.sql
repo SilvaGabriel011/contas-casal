@@ -25,7 +25,7 @@ create table if not exists public.incomes (
   owner text not null check (owner in ('a', 'b', 'shared')),
   amount numeric(12, 2) not null check (amount >= 0),
   currency text not null check (currency in ('AUD', 'BRL')),
-  frequency text not null check (frequency in ('weekly', 'fortnightly', 'monthly')),
+  frequency text not null check (frequency in ('weekly', 'fortnightly', 'monthly', 'once')),
   next_date date not null,
   active boolean not null default true,
   hourly_rate numeric(12, 2),
@@ -57,6 +57,10 @@ alter table public.items add constraint items_kind_check
 alter table public.incomes add column if not exists hourly_rate numeric(12, 2);
 alter table public.incomes add column if not exists hours_per_day numeric(6, 2);
 alter table public.incomes add column if not exists days_per_week numeric(4, 2);
+-- renda avulsa ("uma vez"): a constraint antiga não conhecia o 'once'
+alter table public.incomes drop constraint if exists incomes_frequency_check;
+alter table public.incomes add constraint incomes_frequency_check
+  check (frequency in ('weekly', 'fortnightly', 'monthly', 'once'));
 
 -- Row Level Security: cada conta (o login compartilhado do casal) só vê os próprios dados.
 alter table public.items enable row level security;
@@ -258,3 +262,25 @@ drop policy if exists "own backups" on public.backups;
 create policy "own backups" on public.backups
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create index if not exists backups_user_taken_idx on public.backups (user_id, taken_at desc);
+
+-- ============================================================================
+-- v8: diagnóstico compartilhado (erros dos dois celulares num lugar só)
+-- ============================================================================
+
+-- O app grava aqui (fire-and-forget) cada erro registrado no diagnóstico
+-- local, com aparelho e versão — assim um celular enxerga os erros do outro
+-- em Ajustes → Diagnóstico, sem precisar pedir print.
+create table if not exists public.client_errors (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  ts timestamptz not null default now(),
+  context text not null,
+  message text not null,
+  device text not null default '',
+  app_version text not null default ''
+);
+alter table public.client_errors enable row level security;
+drop policy if exists "own client errors" on public.client_errors;
+create policy "own client errors" on public.client_errors
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create index if not exists client_errors_user_ts_idx on public.client_errors (user_id, ts desc);

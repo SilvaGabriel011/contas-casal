@@ -20,7 +20,7 @@ import {
   type AppMode,
   type CloudConfig,
 } from '../lib/config'
-import { logError } from '../lib/errors'
+import { describeError, logError, setRemoteErrorSink } from '../lib/errors'
 import { EMPTY_SNAPSHOT, type DataAdapter } from './adapter'
 import { LocalAdapter, resetDemoData } from './localAdapter'
 import { getSupabase, SupabaseAdapter } from './supabaseAdapter'
@@ -33,7 +33,8 @@ interface AppData {
   mode: AppMode | null
   snapshot: Snapshot
   userEmail: string | null
-  saveError: boolean
+  // Short technical detail of the last failed save (code + message), or null.
+  saveError: string | null
   dismissSaveError: () => void
   chooseDemo: () => void
   chooseCloud: (cfg: CloudConfig) => void
@@ -53,17 +54,22 @@ interface AppData {
   disablePush: () => Promise<void>
   listBackups: () => Promise<{ id: string; takenAt: string }[]>
   getBackup: (id: string) => Promise<Snapshot | null>
-  upsertItem: (item: Item) => Promise<void>
-  deleteItem: (id: string) => Promise<void>
-  upsertIncome: (income: Income) => Promise<void>
-  deleteIncome: (id: string) => Promise<void>
-  setPaid: (item: Item, dueDate: string, paid: boolean) => Promise<void>
-  upsertExpense: (expense: Expense) => Promise<void>
-  deleteExpense: (id: string) => Promise<void>
-  upsertTransfer: (transfer: Transfer) => Promise<void>
-  deleteTransfer: (id: string) => Promise<void>
-  saveSettings: (settings: HouseholdSettings) => Promise<void>
+  // Mutations resolve to whether the save actually persisted, so callers can
+  // keep their UI open and show the real error instead of a false success.
+  upsertItem: (item: Item) => Promise<boolean>
+  deleteItem: (id: string) => Promise<boolean>
+  upsertIncome: (income: Income) => Promise<boolean>
+  deleteIncome: (id: string) => Promise<boolean>
+  setPaid: (item: Item, dueDate: string, paid: boolean) => Promise<boolean>
+  upsertExpense: (expense: Expense) => Promise<boolean>
+  deleteExpense: (id: string) => Promise<boolean>
+  upsertTransfer: (transfer: Transfer) => Promise<boolean>
+  deleteTransfer: (id: string) => Promise<boolean>
+  saveSettings: (settings: HouseholdSettings) => Promise<boolean>
   importSnapshot: (snapshot: Snapshot) => Promise<boolean>
+  listClientErrors: () => Promise<
+    { ts: string; context: string; message: string; device: string; appVersion: string }[]
+  >
   resetDemo: () => void
 }
 
@@ -91,7 +97,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [mode, setModeState] = useState<AppMode | null>(null)
   const [snapshot, setSnapshot] = useState<Snapshot>(EMPTY_SNAPSHOT)
   const [userEmail, setUserEmail] = useState<string | null>(null)
-  const [saveError, setSaveError] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const adapterRef = useRef<DataAdapter | null>(null)
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const unsubDataRef = useRef<(() => void) | null>(null)
@@ -123,6 +129,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const teardownCloud = useCallback(() => {
     unsubDataRef.current?.()
     unsubDataRef.current = null
+    setRemoteErrorSink(null)
   }, [])
 
   const handleSignedOut = useCallback(() => {
@@ -167,6 +174,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
       teardownCloud()
       unsubDataRef.current = adapter.subscribe?.(scheduleRefetch) ?? null
       ensureAuthListener(sb)
+      // Every diagnostics entry also lands in the shared client_errors table,
+      // so one phone can read the other's errors without asking for prints.
+      setRemoteErrorSink(async (entry) => {
+        if (!userIdRef.current) return
+        await sb.from('client_errors').insert({
+          user_id: userIdRef.current,
+          ts: entry.ts,
+          context: entry.context,
+          message: entry.message,
+          device: navigator.userAgent.slice(0, 120),
+          app_version: `${__APP_VERSION__} (${__BUILD_SHA__})`,
+        })
+      })
     },
     [startAdapter, teardownCloud, scheduleRefetch, ensureAuthListener, refetch]
   )
@@ -426,6 +446,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await storage.remove([...paths, `${prefix}.jpg`])
   }, [])
 
+  // Last errors logged by ANY of the couple's devices (see setRemoteErrorSink).
+  const listClientErrors = useCallback(async () => {
+    const cfg = getCloudConfig()
+    if (!cfg || !userIdRef.current) return []
+    const { data } = await getSupabase(cfg)
+      .from('client_errors')
+      .select('ts, context, message, device, app_version')
+      .order('ts', { ascending: false })
+      .limit(50)
+    return (data ?? []).map((r) => ({
+      ts: String(r.ts),
+      context: String(r.context),
+      message: String(r.message),
+      device: String(r.device ?? ''),
+      appVersion: String(r.app_version ?? ''),
+    }))
+  }, [])
+
   const enablePush = useCallback(async (lang: string): Promise<PushEnableResult> => {
     const cfg = getCloudConfig()
     if (!cfg || !userIdRef.current) return 'unavailable'
@@ -475,30 +513,37 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [teardownCloud])
 
   // Optimistic mutation helper: apply locally, persist, roll back on failure.
-  const mutate = useCallback(async (apply: (s: Snapshot) => Snapshot, persist: (a: DataAdapter) => Promise<void>) => {
-    const adapter = adapterRef.current
-    if (!adapter) return
-    let before: Snapshot | null = null
-    setSnapshot((s) => {
-      before = s
-      return apply(s)
-    })
-    try {
-      await persist(adapter)
-      setSaveError(false)
-    } catch (e) {
-      logError('save', e)
-      setSaveError(true)
+  // Resolves to whether the save persisted; the failure detail lands in
+  // saveError so the banner can say what actually happened.
+  const mutate = useCallback(
+    async (apply: (s: Snapshot) => Snapshot, persist: (a: DataAdapter) => Promise<void>): Promise<boolean> => {
+      const adapter = adapterRef.current
+      if (!adapter) return false
+      let before: Snapshot | null = null
+      setSnapshot((s) => {
+        before = s
+        return apply(s)
+      })
       try {
-        setSnapshot(await adapter.load())
-      } catch {
-        // offline and unable to reload: undo the never-persisted change
-        if (before) setSnapshot(before)
+        await persist(adapter)
+        setSaveError(null)
+        return true
+      } catch (e) {
+        logError('save', e)
+        setSaveError(describeError(e).slice(0, 200))
+        try {
+          setSnapshot(await adapter.load())
+        } catch {
+          // offline and unable to reload: undo the never-persisted change
+          if (before) setSnapshot(before)
+        }
+        return false
       }
-    }
-  }, [])
+    },
+    []
+  )
 
-  const dismissSaveError = useCallback(() => setSaveError(false), [])
+  const dismissSaveError = useCallback(() => setSaveError(null), [])
 
   const upsertItem = useCallback(
     (item: Item) => mutate((s) => reduce.upsertItem(s, item), (a) => a.upsertItem(item)),
@@ -580,7 +625,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       } catch (e) {
         logError('import', e)
         await refetch()
-        setSaveError(true)
+        setSaveError(describeError(e).slice(0, 200))
         return false
       }
     },
@@ -613,6 +658,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     listReceipts,
     removeReceipt,
     deleteReceipt,
+    listClientErrors,
     enablePush,
     disablePush,
     listBackups,
