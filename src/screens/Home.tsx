@@ -4,7 +4,7 @@ import { useAppData } from '../data/DataProvider'
 import { useI18n, formatDay } from '../lib/i18n'
 import { formatMoney } from '../lib/money'
 import { addDays, daysBetween, endOfMonth, parseDate, startOfMonth, todayISO } from '../lib/dates'
-import { buildOccurrences, incomeDates, monthlyEquivalent, visibleToProfile } from '../lib/schedule'
+import { buildOccurrences, incomeDates, incomeInMonth, visibleToProfile } from '../lib/schedule'
 import { expensesFor, monthOf, totalsByCurrency } from '../lib/expenses'
 import { ownerLabel, personName } from '../lib/owners'
 import { SummaryCard } from '../components/SummaryCard'
@@ -65,7 +65,7 @@ export function Home({
     const paidMonth = occs.reduce((s, o) => s + (o.payment ? o.payment.amount : 0), 0)
     const incomeMonth = incomes
       .filter((i) => i.currency === currency)
-      .reduce((s, i) => s + monthlyEquivalent(i.amount, i.frequency), 0)
+      .reduce((s, i) => s + incomeInMonth(i, monthOf(today)), 0)
     return { currency, totalMonth, paidMonth, incomeMonth, expensesMonth: monthExpenses[currency] ?? 0 }
   })
 

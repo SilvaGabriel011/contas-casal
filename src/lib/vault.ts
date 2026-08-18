@@ -2,7 +2,7 @@
 // caixinhas. Pure helpers — persistence rides the settings JSON blob.
 import type { Currency, HouseholdSettings, SavingsGoal, Snapshot, VaultBox, VaultData } from '../types'
 import { endOfMonth, startOfMonth } from './dates'
-import { buildOccurrences, monthlyEquivalent } from './schedule'
+import { buildOccurrences, incomeInMonth } from './schedule'
 import { expensesFor, monthOf, totalsByCurrency } from './expenses'
 
 export function getVault(settings: HouseholdSettings): VaultData {
@@ -43,7 +43,7 @@ export function coupleLeftover(snapshot: Snapshot, today: string): Partial<Recor
   for (const c of ['AUD', 'BRL'] as Currency[]) {
     const income = incomes
       .filter((i) => i.currency === c)
-      .reduce((s, i) => s + monthlyEquivalent(i.amount, i.frequency), 0)
+      .reduce((s, i) => s + incomeInMonth(i, monthOf(today)), 0)
     const bills = occs
       .filter((o) => o.item.currency === c)
       .reduce((s, o) => s + (o.payment?.amount ?? o.item.amount), 0)

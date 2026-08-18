@@ -3,7 +3,7 @@ export type Profile = Owner
 export type Currency = 'AUD' | 'BRL'
 export type ItemKind = 'bill' | 'subscription' | 'installment' | 'purchase'
 export type Frequency = 'weekly' | 'fortnightly' | 'monthly' | 'yearly' | 'once'
-export type IncomeFrequency = 'weekly' | 'fortnightly' | 'monthly'
+export type IncomeFrequency = 'weekly' | 'fortnightly' | 'monthly' | 'once'
 
 export interface Item {
   id: string

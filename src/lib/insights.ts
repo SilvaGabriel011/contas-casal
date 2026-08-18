@@ -3,7 +3,7 @@
 // never one partner against the other.
 import type { Budget, Currency, Expense, Snapshot } from '../types'
 import { monthOf, shiftMonth } from './expenses'
-import { monthlyEquivalent } from './schedule'
+import { incomeInMonth } from './schedule'
 
 // --- Spending radar --------------------------------------------------------
 // "You're spending a lot more than usual on X this month", measured against
@@ -103,7 +103,7 @@ export function coupleBalance(snapshot: Snapshot, month: string): CoupleBalance 
   for (const inc of snapshot.incomes) {
     if (!inc.active) continue
     const person = inc.owner === 'shared' ? null : inc.owner
-    add(income, person, inc.currency, monthlyEquivalent(inc.amount, inc.frequency))
+    add(income, person, inc.currency, incomeInMonth(inc, month))
   }
 
   for (const e of snapshot.expenses) {

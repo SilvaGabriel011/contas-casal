@@ -6,6 +6,7 @@ import {
   incomeDates,
   installmentProgress,
   isItemFinished,
+  incomeInMonth,
   monthlyEquivalent,
   nextIncomeDate,
   nextPayday,
@@ -204,6 +205,13 @@ describe('nextPayday', () => {
     expect(nextPayday([a, paused], '2026-07-14')?.date).toBe('2026-07-20')
     expect(nextPayday([paused], '2026-07-14')).toBeNull()
   })
+
+  it('skips a one-off already received', () => {
+    const past = income({ id: 'a', nextDate: '2026-07-10', frequency: 'once' })
+    const future = income({ id: 'b', nextDate: '2026-07-25', frequency: 'once' })
+    expect(nextPayday([past, future], '2026-07-14')?.date).toBe('2026-07-25')
+    expect(nextPayday([past], '2026-07-14')).toBeNull()
+  })
 })
 
 describe('incomeDates', () => {
@@ -220,6 +228,25 @@ describe('incomeDates', () => {
   it('monthly uses clamped anchor days', () => {
     const i = income({ nextDate: '2026-01-31', frequency: 'monthly' })
     expect(incomeDates(i, '2026-02-01', '2026-03-31')).toEqual(['2026-02-28', '2026-03-31'])
+  })
+
+  it('a one-off lands exactly once, only inside its window', () => {
+    const shift = income({ nextDate: '2026-07-12', frequency: 'once' })
+    expect(incomeDates(shift, '2026-07-01', '2026-07-31')).toEqual(['2026-07-12'])
+    expect(incomeDates(shift, '2026-08-01', '2026-08-31')).toEqual([])
+  })
+})
+
+describe('incomeInMonth', () => {
+  it('counts a one-off fully in its month and nowhere else', () => {
+    const shift = income({ amount: 380, nextDate: '2026-07-12', frequency: 'once' })
+    expect(incomeInMonth(shift, '2026-07')).toBe(380)
+    expect(incomeInMonth(shift, '2026-08')).toBe(0)
+  })
+
+  it('recurring incomes keep the monthly equivalent', () => {
+    const weekly = income({ amount: 100, frequency: 'weekly' })
+    expect(incomeInMonth(weekly, '2026-07')).toBeCloseTo(433.33, 2)
   })
 })
 

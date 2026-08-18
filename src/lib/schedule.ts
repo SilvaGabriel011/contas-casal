@@ -83,6 +83,8 @@ export function isItemFinished(item: Item, payments: Payment[]): boolean {
 // Next payday for an income: the anchor rolled forward to >= given date.
 export function nextIncomeDate(income: Income, onOrAfter: string): string {
   let d = income.nextDate
+  // A one-off has a single date — there is nothing to roll forward to.
+  if (income.frequency === 'once') return d
   if (d >= onOrAfter) {
     // roll backwards is never needed; anchor may already be in the future
     return d
@@ -104,6 +106,7 @@ export function nextIncomeDate(income: Income, onOrAfter: string): string {
 export function incomeDates(income: Income, from: string, to: string): string[] {
   const out: string[] = []
   const anchor = income.nextDate
+  if (income.frequency === 'once') return anchor >= from && anchor <= to ? [anchor] : []
   if (income.frequency === 'monthly') {
     const [ay, am] = anchor.split('-').map(Number)
     const [fy, fm] = from.split('-').map(Number)
@@ -152,6 +155,8 @@ export function nextPayday(incomes: Income[], onOrAfter: string): { date: string
   for (const income of incomes) {
     if (!income.active) continue
     const date = nextIncomeDate(income, onOrAfter)
+    // A one-off already received has no upcoming payday.
+    if (date < onOrAfter) continue
     if (!best || date < best.date) best = { date, income }
   }
   return best
@@ -167,6 +172,14 @@ const PER_MONTH: Record<IncomeFrequency | 'yearly' | 'once', number> = {
 
 export function monthlyEquivalent(amount: number, frequency: Frequency | IncomeFrequency): number {
   return amount * (PER_MONTH[frequency] ?? 0)
+}
+
+// What an income adds to a given month ("YYYY-MM"): recurring cadences use
+// the monthly equivalent; a one-off (an extra shift, a bonus) counts fully in
+// the month it lands and nothing elsewhere.
+export function incomeInMonth(income: Income, month: string): number {
+  if (income.frequency === 'once') return income.nextDate.slice(0, 7) === month ? income.amount : 0
+  return monthlyEquivalent(income.amount, income.frequency)
 }
 
 export function visibleToProfile(owner: Owner, profile: Owner): boolean {

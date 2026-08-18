@@ -6,7 +6,8 @@ import { useAppData } from '../data/DataProvider'
 import { useI18n, formatDay } from '../lib/i18n'
 import { formatMoney, formatMoneyShort, CURRENCY_FLAG } from '../lib/money'
 import { addDays, endOfMonth, startOfMonth, todayISO } from '../lib/dates'
-import { hourlyInfo, incomeDates, monthlyEquivalent, nextIncomeDate, visibleToProfile } from '../lib/schedule'
+import { hourlyInfo, incomeDates, incomeInMonth, nextIncomeDate, visibleToProfile } from '../lib/schedule'
+import { monthOf } from '../lib/expenses'
 import { useCountUp } from '../lib/useCountUp'
 import { ProfileSwitcher } from '../components/ProfileSwitcher'
 import { EmptyState } from '../components/ui'
@@ -90,7 +91,7 @@ export function IncomeScreen({
         let hourlyPaySum = 0
         let hourlyHoursSum = 0
         for (const income of list) {
-          monthTotal += monthlyEquivalent(income.amount, income.frequency)
+          monthTotal += incomeInMonth(income, monthOf(today))
           received += incomeDates(income, monthStart, today).length * income.amount
           coming += incomeDates(income, addDays(today, 1), monthEnd).length * income.amount
           const hourly = hourlyInfo(income)
@@ -189,8 +190,9 @@ export function IncomeScreen({
                     )}
                   </span>
                   <span className="mt-0.5 block text-[12px] text-ink2">
-                    {t(FREQ_EVERY[income.frequency])} · {ownerName(income)} · {t('nextOn')}{' '}
-                    {formatDay(next, locale)}
+                    {income.frequency === 'once'
+                      ? `${t(FREQ_EVERY[income.frequency])} · ${ownerName(income)} · ${formatDay(income.nextDate, locale)}`
+                      : `${t(FREQ_EVERY[income.frequency])} · ${ownerName(income)} · ${t('nextOn')} ${formatDay(next, locale)}`}
                   </span>
                   {hourly && income.hourlyRate && (
                     <span className="num mt-0.5 block text-[12px] font-semibold text-ink2">

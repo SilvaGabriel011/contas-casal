@@ -131,7 +131,11 @@ export function AddSheet({
     setStartDate(d.date ?? todayISO())
     if (d.type === 'income') {
       setOwner(d.owner === 'b' ? 'b' : 'a')
-      setFrequency(d.frequency === 'weekly' || d.frequency === 'fortnightly' ? d.frequency : 'monthly')
+      setFrequency(
+        d.frequency === 'weekly' || d.frequency === 'fortnightly' || d.frequency === 'once'
+          ? d.frequency
+          : 'monthly'
+      )
       setBasis('fixed')
     } else {
       setOwner(d.owner ?? 'shared')
@@ -265,7 +269,7 @@ export function AddSheet({
   const nHoursPerDay = parseAmount(hoursPerDay, decimalSep) ?? 0
   const nDaysPerWeek = parseAmount(daysPerWeek, decimalSep) ?? 0
   const weeklyHours = nHoursPerDay * nDaysPerWeek
-  const incomeFrequency: IncomeFrequency = frequency === 'yearly' || frequency === 'once' ? 'monthly' : frequency
+  const incomeFrequency: IncomeFrequency = frequency === 'yearly' ? 'monthly' : frequency
   const cyclePay =
     rate !== null && weeklyHours > 0 ? hourlyPerCycle(rate, nHoursPerDay, nDaysPerWeek, incomeFrequency) : null
 
@@ -382,7 +386,7 @@ export function AddSheet({
     shareIcs(`${editItem.name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-')}-lembretes.ics`, ics)
   }
 
-  const incomeFreqOptions: IncomeFrequency[] = ['weekly', 'fortnightly', 'monthly']
+  const incomeFreqOptions: IncomeFrequency[] = ['weekly', 'fortnightly', 'monthly', 'once']
   const itemFreqOptions: Frequency[] = ['weekly', 'fortnightly', 'monthly', 'yearly', 'once']
 
   const ownerOptions: { value: Owner; label: string }[] = [
@@ -395,7 +399,9 @@ export function AddSheet({
   const showFrequency = kind !== 'expense' && !kindConfig?.forcedFrequency
   const dateLabel =
     kind === 'income'
-      ? t('nextPayDate')
+      ? incomeFrequency === 'once'
+        ? t('payDateOnce')
+        : t('nextPayDate')
       : kind === 'expense'
         ? t('expenseDate')
         : frequency === 'once' && kind !== 'purchase'
@@ -491,7 +497,7 @@ export function AddSheet({
               </Field>
             )}
 
-            {kind === 'income' && (
+            {kind === 'income' && incomeFrequency !== 'once' && (
               <Field label={t('payBasis')}>
                 <Segmented
                   options={[
@@ -622,11 +628,22 @@ export function AddSheet({
             {kind === 'income' ? (
               <>
                 <Field label={t('frequency')}>
-                  <Segmented
-                    options={incomeFreqOptions.map((f) => ({ value: f, label: t(f as TKey) }))}
-                    value={incomeFrequency}
-                    onChange={(f) => setFrequency(f)}
-                  />
+                  <div className="flex flex-wrap gap-2">
+                    {incomeFreqOptions.map((f) => (
+                      <Chip
+                        key={f}
+                        selected={incomeFrequency === f}
+                        onClick={() => {
+                          setFrequency(f)
+                          // A one-off (an extra shift) is a plain amount — the
+                          // hourly calculator only makes sense for a cadence.
+                          if (f === 'once') setBasis('fixed')
+                        }}
+                      >
+                        {t(f as TKey)}
+                      </Chip>
+                    ))}
+                  </div>
                 </Field>
                 {editing && (
                   <Field label={t('activeOne')}>
