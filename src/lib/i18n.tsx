@@ -171,8 +171,6 @@ const pt = {
     // contagem Brasil
     brCountdownTitle: 'Parcelas do Brasil acabam em {month}! 🎉',
     brCountdownBody: 'faltam {n} parcelas · {v}',
-    trioLeft: 'sobra/mês',
-    trioPaid: '{k}/{n} contas pagas',
     agendaCouple: 'Agenda do casal',
     diagBuild: 'Versão instalada',
     // cofre
@@ -685,8 +683,6 @@ const en = {
     aiReceiptScan: 'Scan receipt with AI',
     brCountdownTitle: 'Brazil instalments end in {month}! 🎉',
     brCountdownBody: '{n} instalments left · {v}',
-    trioLeft: 'left/month',
-    trioPaid: '{k}/{n} bills paid',
     agendaCouple: 'Couple agenda',
     diagBuild: 'Installed build',
     menuVault: 'Vault',
