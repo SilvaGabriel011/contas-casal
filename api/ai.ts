@@ -24,6 +24,15 @@ function jsonError(status: number, code: string): Response {
 
 type RecordsMeta = { today?: string; nameA?: string; nameB?: string; categories?: string[] }
 
+// The user can send an explanation along with an image ("each shift pays
+// $260", "os de domingo são R$ 320") — it rides in the same message so the
+// model reads picture and text together.
+function withUserNote(instruction: string, note: unknown): string {
+  const clean = String(note ?? '').slice(0, 2000).trim()
+  if (!clean) return instruction
+  return `${instruction}\nThe user also wrote this about the image — treat it as authoritative for amounts, values per line, dates, owner and frequency:\n"""${clean}"""`
+}
+
 // Shared prompt for the modes that extract structured finance records the user
 // reviews before saving: image "prints" (screenshot) and extracted statement
 // text from PDFs/CSVs (statement). Only the opening sentence differs.
@@ -87,6 +96,7 @@ export default async function handler(req: Request): Promise<Response> {
     mode?: string
     text?: string
     image?: string
+    note?: string
     meta?: { today?: string; nameA?: string; nameB?: string; categories?: string[] }
   }
   try {
@@ -124,7 +134,7 @@ export default async function handler(req: Request): Promise<Response> {
           {
             role: 'user',
             content: [
-              { type: 'text', text: 'Extract the total from this receipt.' },
+              { type: 'text', text: withUserNote('Extract the total from this receipt.', body.note) },
               { type: 'image_url', image_url: { url: image, detail: 'high' } },
             ],
           },
@@ -165,7 +175,7 @@ export default async function handler(req: Request): Promise<Response> {
           {
             role: 'user',
             content: [
-              { type: 'text', text: 'Extract every finance record from this screenshot.' },
+              { type: 'text', text: withUserNote('Extract every finance record from this screenshot.', body.note) },
               { type: 'image_url', image_url: { url: image, detail: 'high' } },
             ],
           },

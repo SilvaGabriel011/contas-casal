@@ -106,23 +106,27 @@ export async function parseQuickAdd(
 }
 
 // Receipt photo (data URL, already downscaled) -> at least the final total.
+// An optional note written by the user travels with the image.
 export async function parseReceipt(
   imageDataUrl: string,
   meta: QuickAddMeta,
   lang: string,
-  accessToken: string
+  accessToken: string,
+  note?: string
 ): Promise<QuickDraft[]> {
-  return requestRecords({ mode: 'receipt', image: imageDataUrl, meta, lang }, accessToken)
+  return requestRecords({ mode: 'receipt', image: imageDataUrl, meta, lang, note }, accessToken)
 }
 
 // Screenshot ("print") of bills/statements -> full records for the review modal.
+// An optional note written by the user travels with the image.
 export async function parseScreenshot(
   imageDataUrl: string,
   meta: QuickAddMeta,
   lang: string,
-  accessToken: string
+  accessToken: string,
+  note?: string
 ): Promise<QuickDraft[]> {
-  return requestRecords({ mode: 'screenshot', image: imageDataUrl, meta, lang }, accessToken)
+  return requestRecords({ mode: 'screenshot', image: imageDataUrl, meta, lang, note }, accessToken)
 }
 
 // Text extracted from a PDF or CSV bank statement -> full records for the
