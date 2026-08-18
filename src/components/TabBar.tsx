@@ -30,7 +30,7 @@ export function TabBar({
     >
       <span
         key={tab === key ? 'active' : 'idle'}
-        className={`text-[22px] leading-none min-[430px]:text-2xl ${tab === key ? 'anim-pop' : 'opacity-45 grayscale'}`}
+        className={`text-[22px] leading-none min-[430px]:text-2xl ${tab === key ? 'anim-pop' : 'opacity-60 saturate-50'}`}
       >
         {ICONS[key]}
       </span>

@@ -20,8 +20,12 @@ export function Segmented<T extends string>({
           role="tab"
           aria-selected={value === o.value}
           onClick={() => onChange(o.value)}
-          className={`flex-1 rounded-lg px-2 py-1.5 text-sm font-medium transition-all ${
-            value === o.value ? 'bg-card text-ink shadow-sm' : 'text-ink2'
+          className={`flex-1 rounded-lg px-2 py-1.5 text-sm transition-all ${
+            // In dark mode the card token sits below the track, so the pill
+            // needs its own lighter fill to read as selected.
+            value === o.value
+              ? 'bg-card font-semibold text-ink shadow-sm dark:bg-white/15'
+              : 'font-medium text-ink2'
           }`}
         >
           {o.label}
