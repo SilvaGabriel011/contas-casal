@@ -1,25 +1,14 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import type { Currency, Income, Item, Occurrence, Profile } from '../types'
 import { useAppData } from '../data/DataProvider'
 import { useI18n, formatDay } from '../lib/i18n'
 import { formatMoney, formatMoneyShort } from '../lib/money'
-import { addDays, addMonthsClamped, daysBetween, endOfMonth, parseDate, startOfMonth, todayISO } from '../lib/dates'
-import {
-  buildOccurrences,
-  incomeDates,
-  installmentProgress,
-  monthlyEquivalent,
-  visibleToProfile,
-} from '../lib/schedule'
+import { addDays, daysBetween, endOfMonth, parseDate, startOfMonth, todayISO } from '../lib/dates'
+import { buildOccurrences, incomeDates, monthlyEquivalent, visibleToProfile } from '../lib/schedule'
 import { expensesFor, monthOf, totalsByCurrency } from '../lib/expenses'
-import { budgetAlerts, categoryAlerts } from '../lib/insights'
-import { categoryLabel } from '../lib/categories'
 import { ownerLabel, personName } from '../lib/owners'
 import { SummaryCard } from '../components/SummaryCard'
 import { OccurrenceRow } from '../components/OccurrenceRow'
-import { VaultNudge } from '../components/VaultNudge'
-import { ForecastCard } from '../components/ForecastCard'
-import { goalSaved } from '../lib/vault'
 import { EmptyState } from '../components/ui'
 
 const AGENDA_DAYS = 30
@@ -40,20 +29,19 @@ export function Home({
   const { snapshot, mode } = useAppData()
   const { t, locale } = useI18n()
   const today = todayISO()
-  const [expanded, setExpanded] = useState(false)
 
   const allItems = useMemo(() => snapshot.items.filter((i) => !i.archived), [snapshot.items])
   const allIncomes = useMemo(() => snapshot.incomes.filter((i) => i.active), [snapshot.incomes])
 
-  // The trio: one glance card per scope (each partner + the couple). The ring
-  // is bills-paid progress this month (count-based, so currencies can mix);
-  // the number is the estimated leftover per currency.
+  // The trio: one glance card per scope (each partner + the couple). The
+  // headline is the estimated leftover per currency; below it, how many of
+  // the month's bills are already paid.
   const trio = useMemo(() => {
     return (['a', 'b', 'shared'] as Profile[]).map((p) => {
       const items = allItems.filter((i) => visibleToProfile(i.owner, p))
       const incomes = allIncomes.filter((i) => visibleToProfile(i.owner, p))
       const occs = buildOccurrences(items, snapshot.payments, startOfMonth(today), endOfMonth(today))
-      const paidCount = occs.filter((o) => o.payment).length
+      const paid = occs.filter((o) => o.payment).length
       const expenses = totalsByCurrency(expensesFor(snapshot.expenses, monthOf(today), p))
       const leftover: [Currency, number][] = []
       for (const c of ['AUD', 'BRL'] as Currency[]) {
@@ -66,12 +54,12 @@ export function Home({
         const spent = expenses[c] ?? 0
         if (income !== 0 || bills !== 0 || spent !== 0) leftover.push([c, income - bills - spent])
       }
-      return { p, ringRatio: occs.length > 0 ? paidCount / occs.length : null, leftover }
+      return { p, paid, total: occs.length, leftover }
     })
   }, [allItems, allIncomes, snapshot.payments, snapshot.expenses, today])
 
-  // Expanded detail for the selected card — same numbers as the old summary
-  // cards, scoped to the selected profile.
+  // Month summary for the selected profile — always visible, one card per
+  // currency in use.
   const items = useMemo(
     () => allItems.filter((i) => visibleToProfile(i.owner, profile)),
     [allItems, profile]
@@ -105,7 +93,7 @@ export function Home({
     return { currency, totalMonth, paidMonth, incomeMonth, expensesMonth: monthExpenses[currency] ?? 0 }
   })
 
-  // Couple-wide agenda (concept C): everything with a date becomes an event.
+  // Couple-wide agenda: everything with a date becomes an event.
   const listOccs = useMemo(
     () => buildOccurrences(allItems, snapshot.payments, addDays(today, -60), addDays(today, AGENDA_DAYS)),
     [allItems, snapshot.payments, today]
@@ -155,41 +143,6 @@ export function Home({
   const scrollToDay = (date: string) => {
     document.getElementById(`agenda-${date}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
-
-  // Consumption radar (kept from the previous home).
-  const radar = useMemo(() => {
-    const m = monthOf(today)
-    const budget = budgetAlerts(snapshot.expenses, m, snapshot.settings.budgets)
-    const covered = new Set(budget.map((b) => `${b.category}|${b.currency}`))
-    const trend = categoryAlerts(snapshot.expenses, m).filter((a) => !covered.has(`${a.category}|${a.currency}`))
-    return [
-      ...budget.map((b) => ({ kind: 'budget' as const, ...b })),
-      ...trend.map((a) => ({ kind: 'trend' as const, ...a })),
-    ].slice(0, 2)
-  }, [snapshot.expenses, snapshot.settings, today])
-
-  const brCountdown = useMemo(() => {
-    let lastDue = ''
-    let remaining = 0
-    let total = 0
-    for (const item of snapshot.items) {
-      if (item.archived || item.currency !== 'BRL' || item.kind !== 'installment' || !item.installmentsTotal)
-        continue
-      const { paid } = installmentProgress(item, snapshot.payments)
-      const left = item.installmentsTotal - paid
-      if (left <= 0) continue
-      remaining += left
-      total += left * item.amount
-      const end = addMonthsClamped(item.startDate, item.installmentsTotal - 1)
-      if (end > lastDue) lastDue = end
-    }
-    return remaining > 0 ? { lastDue, remaining, total } : null
-  }, [snapshot.items, snapshot.payments])
-
-  const activeGoals = (snapshot.settings.goals ?? [])
-    .map((g) => ({ goal: g, saved: goalSaved(g, snapshot.settings) }))
-    .filter(({ goal, saved }) => goal.target > 0 && saved < goal.target)
-    .slice(0, 2)
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? t('goodMorning') : hour < 18 ? t('goodAfternoon') : t('goodEvening')
@@ -243,13 +196,7 @@ export function Home({
               return (
                 <button
                   key={c.p}
-                  onClick={() => {
-                    if (selected) setExpanded((v) => !v)
-                    else {
-                      onProfile(c.p)
-                      setExpanded(true)
-                    }
-                  }}
+                  onClick={() => onProfile(c.p)}
                   className={`press anim-rise rounded-2xl border p-3 text-center transition-all ${
                     selected ? 'border-accent bg-card shadow-sm' : 'border-line bg-card2'
                   }`}
@@ -259,49 +206,58 @@ export function Home({
                     {c.p === 'shared' ? '💞 ' : ''}
                     {name}
                   </span>
-                  <Ring ratio={c.ringRatio} />
-                  {c.leftover.length === 0 ? (
-                    <span className="num block text-[13px] font-extrabold text-ink2">—</span>
-                  ) : (
-                    c.leftover.map(([cur, v], j) => (
-                      <span
-                        key={cur}
-                        className={`num block ${j === 0 ? 'text-[13px] font-extrabold' : 'text-[11px] font-semibold'} ${
-                          v < 0 ? 'text-bad' : 'text-ink'
-                        }`}
-                      >
-                        {v >= 0 ? '+' : ''}
-                        {formatMoneyShort(v, cur, locale)}
-                      </span>
-                    ))
-                  )}
+                  <span className="mt-1.5 block">
+                    {c.leftover.length === 0 ? (
+                      <span className="num block text-[15px] font-extrabold text-ink2">—</span>
+                    ) : (
+                      c.leftover.map(([cur, v], j) => (
+                        <span
+                          key={cur}
+                          className={`num block ${j === 0 ? 'text-[15px] font-extrabold' : 'text-[12px] font-semibold'} ${
+                            v < 0 ? 'text-bad' : 'text-ink'
+                          }`}
+                        >
+                          {v >= 0 ? '+' : ''}
+                          {formatMoneyShort(v, cur, locale)}
+                        </span>
+                      ))
+                    )}
+                  </span>
                   <span className="block text-[11px] text-ink2">{t('trioLeft')}</span>
+                  {c.total > 0 && (
+                    <span
+                      className={`mt-1 block text-[10px] font-bold ${
+                        c.paid === c.total ? 'text-good' : 'text-ink2'
+                      }`}
+                    >
+                      {c.paid === c.total ? '✓ ' : ''}
+                      {t('trioPaid', { k: c.paid, n: c.total })}
+                    </span>
+                  )}
                 </button>
               )
             })}
           </div>
 
-          {expanded && (
-            <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4">
-              {summaries.map((s) => (
-                <div key={s.currency} className={summaries.length > 1 ? 'w-[88%] shrink-0 snap-center' : 'w-full'}>
-                  <SummaryCard
-                    currency={s.currency}
-                    monthLabel={monthLabel}
-                    totalMonth={s.totalMonth}
-                    paidMonth={s.paidMonth}
-                    incomeMonth={s.incomeMonth}
-                    expensesMonth={s.expensesMonth}
-                  />
-                </div>
-              ))}
-              {summaries.length === 0 && (
-                <p className="w-full rounded-2xl border border-line bg-card px-4 py-3 text-[13px] text-ink2">
-                  {t('noUpcoming')}
-                </p>
-              )}
-            </div>
-          )}
+          <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4">
+            {summaries.map((s) => (
+              <div key={s.currency} className={summaries.length > 1 ? 'w-[88%] shrink-0 snap-center' : 'w-full'}>
+                <SummaryCard
+                  currency={s.currency}
+                  monthLabel={monthLabel}
+                  totalMonth={s.totalMonth}
+                  paidMonth={s.paidMonth}
+                  incomeMonth={s.incomeMonth}
+                  expensesMonth={s.expensesMonth}
+                />
+              </div>
+            ))}
+            {summaries.length === 0 && (
+              <p className="w-full rounded-2xl border border-line bg-card px-4 py-3 text-[13px] text-ink2">
+                {t('noUpcoming')}
+              </p>
+            )}
+          </div>
 
           <div className="anim-rise flex gap-1.5">
             {week.map((d) => {
@@ -326,35 +282,6 @@ export function Home({
               )
             })}
           </div>
-
-          <ForecastCard />
-
-          <VaultNudge />
-
-          {radar.length > 0 && (
-            <section className="space-y-2">
-              {radar.map((a) => (
-                <div
-                  key={`${a.kind}-${a.category}-${a.currency}`}
-                  className="anim-rise flex items-center gap-3 rounded-2xl border border-bad/30 bg-bad/5 px-4 py-3"
-                >
-                  <span className="text-2xl">{a.kind === 'budget' ? '🎯' : '📈'}</span>
-                  <p className="min-w-0 flex-1 text-[13px] leading-snug font-bold text-ink">
-                    {a.kind === 'budget'
-                      ? t('alertOverBudget', {
-                          cat: categoryLabel(a.category, snapshot.settings, t),
-                          spent: formatMoneyShort(a.spent, a.currency, locale),
-                          budget: formatMoneyShort(a.budget, a.currency, locale),
-                        })
-                      : t('alertOverTypical', {
-                          cat: categoryLabel(a.category, snapshot.settings, t),
-                          pct: a.pct,
-                        })}
-                  </p>
-                </div>
-              ))}
-            </section>
-          )}
 
           {overdue.length > 0 && (
             <section>
@@ -427,91 +354,9 @@ export function Home({
               </div>
             )}
           </section>
-
-          {brCountdown && (
-            <div className="anim-rise flex items-center gap-3 rounded-2xl border border-line bg-card px-4 py-3">
-              <span className="text-2xl">🇧🇷</span>
-              <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-bold text-ink">
-                  {t('brCountdownTitle', {
-                    month: new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(
-                      new Date(
-                        Number(brCountdown.lastDue.slice(0, 4)),
-                        Number(brCountdown.lastDue.slice(5, 7)) - 1,
-                        1
-                      )
-                    ),
-                  })}
-                </p>
-                <p className="num truncate text-[12px] text-ink2">
-                  {t('brCountdownBody', {
-                    n: brCountdown.remaining,
-                    v: formatMoneyShort(brCountdown.total, 'BRL', locale),
-                  })}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {activeGoals.length > 0 && (
-            <section className="space-y-2">
-              {activeGoals.map(({ goal: g, saved }) => {
-                const ratio = Math.min(1, saved / g.target)
-                return (
-                  <div key={g.id} className="anim-rise rounded-2xl border border-line bg-card px-4 py-3">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <p className="min-w-0 truncate text-[13px] font-bold text-ink">
-                        {g.emoji || '🐷'} {g.name}
-                      </p>
-                      <p className="num shrink-0 text-[12px] font-bold text-ink2">
-                        {formatMoneyShort(saved, g.currency, locale)} /{' '}
-                        {formatMoneyShort(g.target, g.currency, locale)}
-                      </p>
-                    </div>
-                    <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-card2">
-                      <div
-                        className="grad-accent h-full rounded-full transition-all duration-700"
-                        style={{ width: `${ratio * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                )
-              })}
-            </section>
-          )}
         </>
       )}
     </div>
-  )
-}
-
-// Bills-paid progress this month. Count-based so AUD and BRL can share one
-// ring without mixing currencies.
-function Ring({ ratio }: { ratio: number | null }) {
-  const r = 17
-  const circumference = 2 * Math.PI * r
-  return (
-    <span className="relative mx-auto my-1.5 block h-11 w-11">
-      <svg viewBox="0 0 44 44" className="h-11 w-11 -rotate-90">
-        <circle cx="22" cy="22" r={r} fill="none" stroke="var(--card-2)" strokeWidth="5" />
-        {ratio !== null && (
-          <circle
-            cx="22"
-            cy="22"
-            r={r}
-            fill="none"
-            stroke={ratio >= 1 ? 'var(--good)' : 'var(--accent)'}
-            strokeWidth="5"
-            strokeLinecap="round"
-            strokeDasharray={`${ratio * circumference} ${circumference}`}
-            className="transition-all duration-700"
-          />
-        )}
-      </svg>
-      <span className="num absolute inset-0 flex items-center justify-center text-[10px] font-extrabold text-ink">
-        {ratio === null ? '—' : `${Math.round(ratio * 100)}%`}
-      </span>
-    </span>
   )
 }
 
