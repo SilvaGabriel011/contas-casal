@@ -92,6 +92,10 @@ export function MenuScreen({
       <div className="rounded-2xl border border-line bg-card">
         {row('settings', '⚙️', t('tabSettings'), t('menuSettingsHint'), onOpenSettings, 0)}
       </div>
+
+      <p className="num pb-2 text-center text-[12px] font-semibold text-ink2">
+        {t('appVersion', { v: __APP_VERSION__ })}
+      </p>
     </div>
   )
 }

@@ -177,6 +177,7 @@ const pt = {
     brCountdownBody: 'faltam {n} parcelas · {v}',
     agendaCouple: 'Agenda do casal',
     diagBuild: 'Versão instalada',
+    appVersion: 'Versão {v}',
     // cofre
     menuVault: 'Cofre',
     menuVaultHint: 'O que vocês têm guardado, por caixinha',
@@ -690,6 +691,7 @@ const en = {
     brCountdownBody: '{n} instalments left · {v}',
     agendaCouple: 'Couple agenda',
     diagBuild: 'Installed build',
+    appVersion: 'Version {v}',
     menuVault: 'Vault',
     menuVaultHint: 'What you have stashed, box by box',
     vaultIntro: 'Track where the stashed money sits — emergency, masters, BRL in Brazil — and how it is distributed.',

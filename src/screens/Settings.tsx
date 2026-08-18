@@ -654,7 +654,7 @@ export function Settings() {
           </>
         )}
         <p className="num border-t border-line pt-3 text-[12px] text-ink2">
-          {t('diagBuild')}: <span className="font-bold">{__BUILD_SHA__}</span> ·{' '}
+          {t('diagBuild')}: <span className="font-bold">v{__APP_VERSION__}</span> ({__BUILD_SHA__}) ·{' '}
           {new Intl.DateTimeFormat(locale, { dateStyle: 'short', timeStyle: 'short' }).format(
             new Date(__BUILD_TIME__)
           )}
