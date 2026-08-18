@@ -4,11 +4,10 @@ import { getDeviceOwner } from '../lib/device'
 import { CATEGORIES } from '../types'
 import { useAppData } from '../data/DataProvider'
 import { useI18n, type TKey } from '../lib/i18n'
-import { CAT_KEY, categoryEmoji, categoryLabel } from '../lib/categories'
-import { ownerLabel, personName } from '../lib/owners'
+import { CAT_KEY, categoryEmoji } from '../lib/categories'
 import { AiQuickAdd } from './AiQuickAdd'
 import type { QuickDraft } from '../lib/ai'
-import { FREQ_EVERY, ITEM_KINDS, KIND_CONFIG } from '../lib/kinds'
+import { FREQ_EVERY, KIND_CONFIG } from '../lib/kinds'
 import { formatAmountInput, formatMoney, parseAmount } from '../lib/money'
 import { hourlyPerCycle } from '../lib/schedule'
 import { buildRemindersIcs, icsEventCount, shareIcs } from '../lib/ics'
@@ -18,15 +17,18 @@ import { downscaleImage } from '../lib/image'
 import { Chip, Field, inputCls, Segmented, Sheet } from './ui'
 
 type FormKind = ItemKind | 'income' | 'expense'
+type Screen = 'menu' | 'ai' | 'form'
 
-function ReviewRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <span className="shrink-0 text-[12px] font-semibold text-ink2">{label}</span>
-      <span className="num min-w-0 text-right text-[14px] font-bold break-words text-ink">{value}</span>
-    </div>
-  )
-}
+// The intent list: verbs instead of a taxonomy quiz. Each row opens ONE
+// single-screen form with only that intent's fields.
+const INTENTS: { kind: FormKind; emoji: string; labelKey: TKey; hintKey: TKey }[] = [
+  { kind: 'expense', emoji: '☕', labelKey: 'intentExpense', hintKey: 'intentExpenseHint' },
+  { kind: 'bill', emoji: '🧾', labelKey: 'intentBill', hintKey: 'kindBillHint' },
+  { kind: 'subscription', emoji: '🔁', labelKey: 'intentSub', hintKey: 'kindSubHint' },
+  { kind: 'installment', emoji: '💳', labelKey: 'intentInst', hintKey: 'kindInstHint' },
+  { kind: 'purchase', emoji: '🛍️', labelKey: 'intentPurchase', hintKey: 'kindPurchaseHint' },
+  { kind: 'income', emoji: '💰', labelKey: 'intentIncome', hintKey: 'intentIncomeHint' },
+]
 
 export function AddSheet({
   open,
@@ -60,6 +62,7 @@ export function AddSheet({
   const { t, lang, locale, decimalSep } = useI18n()
   const editing = Boolean(editItem || editIncome || editExpense)
 
+  const [screen, setScreen] = useState<Screen>('menu')
   const [kind, setKind] = useState<FormKind>('bill')
   const [name, setName] = useState('')
   const [amountRaw, setAmountRaw] = useState('')
@@ -79,7 +82,6 @@ export function AddSheet({
   const [hoursPerDay, setHoursPerDay] = useState('8')
   const [daysPerWeek, setDaysPerWeek] = useState('5')
   const [error, setError] = useState('')
-  const [stepIdx, setStepIdx] = useState(0)
   const [newCatOpen, setNewCatOpen] = useState(false)
   const [newCatEmoji, setNewCatEmoji] = useState('')
   const [newCatName, setNewCatName] = useState('')
@@ -89,8 +91,8 @@ export function AddSheet({
   const [receiptRemoved, setReceiptRemoved] = useState(false)
   const [aiFilled, setAiFilled] = useState(false)
 
-  // AI quick-add with a single result: fill every wizard step and jump to the
-  // end — the user just reviews and hits save.
+  // AI quick-add with a single result: fill the detected intent's form and
+  // land on it — the user just reviews the fields and hits save.
   const applyDraft = (d: QuickDraft) => {
     setKindPreset(d.type)
     setAmountRaw(formatAmountInput(d.amount, decimalSep))
@@ -121,13 +123,13 @@ export function AddSheet({
     }
     setError('')
     setAiFilled(true)
-    setStepIdx(99) // clamps to the final step
+    setScreen('form')
   }
 
   useEffect(() => {
     if (!open) return
     setError('')
-    setStepIdx(0)
+    setScreen(editItem || editIncome || editExpense ? 'form' : 'menu')
     setNewCatOpen(false)
     setNewCatEmoji('')
     setNewCatName('')
@@ -217,6 +219,12 @@ export function AddSheet({
     if (cfg.presetCurrency) setCurrency(cfg.presetCurrency)
   }
 
+  const openIntent = (k: FormKind) => {
+    setError('')
+    setKindPreset(k)
+    setScreen('form')
+  }
+
   const amount = parseAmount(amountRaw, decimalSep)
   // "until October" mode: the count is derived from first-payment month
   // through the chosen last month, inclusive.
@@ -304,6 +312,8 @@ export function AddSheet({
     }
 
     if (amount === null || amount <= 0) return setError(t('invalidAmount'))
+    if (kind === 'installment' && instMode === 'until' && (!endMonth || nInstallments < 1))
+      return setError(t('invalidEndMonth'))
     const item: Item = {
       id: editItem?.id ?? crypto.randomUUID(),
       kind,
@@ -367,382 +377,346 @@ export function AddSheet({
           ? t('dueDate')
           : t(KIND_CONFIG[kind].dateLabelKey)
 
-  // Wizard: what -> value -> details -> extras -> review (income skips extras).
-  type WizardStep = 'what' | 'value' | 'details' | 'extras' | 'review'
-  const steps: WizardStep[] = [
-    ...(editing ? [] : (['what'] as WizardStep[])),
-    'value',
-    'details',
-    ...(kind === 'income' ? [] : (['extras'] as WizardStep[])),
-    'review',
-  ]
-  const step = steps[Math.min(stepIdx, steps.length - 1)]
-  const stepTitle: Record<WizardStep, TKey> = {
-    what: 'stepWhat',
-    value: 'stepValue',
-    details: 'stepDetails',
-    extras: 'stepExtras',
-    review: 'stepReview',
-  }
-
-  const validateStep = (s: WizardStep): string | null => {
-    if (s === 'value') {
-      if (isHourlyIncome) {
-        if (cyclePay === null || cyclePay <= 0) return t('invalidAmount')
-      } else if (amount === null || amount <= 0) {
-        return t('invalidAmount')
-      }
-      if (kind === 'installment' && instMode === 'until' && (!endMonth || nInstallments < 1))
-        return t('invalidEndMonth')
-    }
-    if (s === 'details' && kind !== 'expense' && !name.trim()) return t('fillName')
-    // The first-payment date lives on this step and can move past the chosen
-    // last month, so the "until" count needs re-checking here too.
-    if (s === 'details' && kind === 'installment' && instMode === 'until' && nInstallments < 1)
-      return t('invalidEndMonth')
-    return null
-  }
-
-  const nextStep = () => {
-    const err = validateStep(step)
-    if (err) return setError(err)
-    setError('')
-    if (stepIdx >= steps.length - 1) save()
-    else setStepIdx(stepIdx + 1)
-  }
-
-  const prevStep = () => {
-    setError('')
-    setStepIdx(Math.max(0, stepIdx - 1))
-  }
+  const intent = INTENTS.find((i) => i.kind === kind)
+  const title =
+    screen === 'menu'
+      ? t('addIntentTitle')
+      : screen === 'ai'
+        ? `✨ ${t('intentAi')}`
+        : editing
+          ? t('editTitle')
+          : intent
+            ? `${intent.emoji} ${t(intent.labelKey)}`
+            : t('addTitle')
 
   return (
-    <Sheet open={open} onClose={onClose} title={editing ? t('editTitle') : t('addTitle')}>
+    <Sheet open={open} onClose={onClose} title={title}>
       <div className="space-y-4 pb-4">
-        <div className="flex items-center gap-2">
-          <div className="flex flex-1 gap-1.5">
-            {steps.map((s, i) => (
-              <span
-                key={s}
-                className={`h-1.5 flex-1 rounded-full transition-colors ${
-                  i <= stepIdx ? 'grad-accent' : 'bg-card2'
-                }`}
-              />
-            ))}
-          </div>
-          <span className="text-[12px] font-bold text-ink2">
-            {t('stepOf', { a: stepIdx + 1, b: steps.length })} · {t(stepTitle[step])}
-          </span>
-        </div>
-
-        {aiFilled && (
-          <p className="anim-rise rounded-2xl bg-accent/10 px-4 py-2.5 text-[13px] font-bold text-accent">
-            ✨ {t('aiFilledBanner')}
-          </p>
-        )}
-
-        {step === 'what' && (
+        {screen === 'menu' && (
           <div className="anim-rise space-y-4">
-            <Segmented
-              options={[
-                { value: 'bill', label: `🧾 ${t('bill')}` },
-                { value: 'expense', label: `☕ ${t('quickExpense')}` },
-                { value: 'income', label: `💰 ${t('income')}` },
-              ]}
-              value={kind === 'income' ? 'income' : kind === 'expense' ? 'expense' : 'bill'}
-              onChange={(v) => setKindPreset(v as FormKind)}
-            />
-
-            {kind !== 'income' && kind !== 'expense' && (
-              <div className="grid grid-cols-2 gap-2">
-                {ITEM_KINDS.map((k) => (
-                  <button
-                    key={k}
-                    onClick={() => setKindPreset(k)}
-                    className={`press rounded-2xl border p-3 text-left transition-all ${
-                      kind === k ? 'border-accent bg-card shadow-sm' : 'border-line bg-card2'
-                    }`}
-                  >
-                    <span className="text-xl">{KIND_CONFIG[k].emoji}</span>
-                    <span className="mt-1 block text-sm font-bold text-ink">{t(KIND_CONFIG[k].labelKey)}</span>
-                    <span className="block text-[11px] leading-tight text-ink2">{t(KIND_CONFIG[k].hintKey)}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <AiQuickAdd onDone={onClose} onPrefill={applyDraft} />
-          </div>
-        )}
-
-        {step === 'value' && (
-          <div className="anim-rise space-y-4">
-        {kind === 'income' && (
-          <Field label={t('payBasis')}>
-            <Segmented
-              options={[
-                { value: 'fixed', label: `💵 ${t('basisFixed')}` },
-                { value: 'hourly', label: `⏱️ ${t('basisHourly')}` },
-              ]}
-              value={basis}
-              onChange={setBasis}
-            />
-          </Field>
-        )}
-
-        <div className="grid grid-cols-2 gap-3">
-          <Field
-            label={
-              isHourlyIncome ? t('hourlyRateLabel') : kindConfig ? t(kindConfig.amountLabelKey) : t('amount')
-            }
-          >
-            <input
-              className={`${inputCls} num`}
-              value={isHourlyIncome ? rateRaw : amountRaw}
-              onChange={(e) => (isHourlyIncome ? setRateRaw(e.target.value) : setAmountRaw(e.target.value))}
-              inputMode="decimal"
-              placeholder={decimalSep === ',' ? '0,00' : '0.00'}
-            />
-            {!isHourlyIncome && amount !== null && /[.,]/.test(amountRaw) && (
-              <span className="num mt-1 block text-[12px] font-semibold text-ink2">
-                = {formatMoney(amount, currency, locale)}
-              </span>
-            )}
-          </Field>
-          <Field label={t('currency')}>
-            <Segmented
-              options={[
-                { value: 'AUD', label: '🇦🇺 AUD' },
-                { value: 'BRL', label: '🇧🇷 BRL' },
-              ]}
-              value={currency}
-              onChange={setCurrency}
-              className="py-[3px]"
-            />
-          </Field>
-        </div>
-
-        {isHourlyIncome && (
-          <>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label={t('hoursPerDayLabel')}>
-                <input
-                  className={`${inputCls} num`}
-                  value={hoursPerDay}
-                  onChange={(e) => setHoursPerDay(e.target.value)}
-                  inputMode="decimal"
-                />
-              </Field>
-              <Field label={t('daysPerWeekLabel')}>
-                <input
-                  className={`${inputCls} num`}
-                  value={daysPerWeek}
-                  onChange={(e) => setDaysPerWeek(e.target.value)}
-                  inputMode="decimal"
-                />
-              </Field>
+            <div className="divide-y divide-line rounded-2xl border border-line bg-card">
+              {INTENTS.map((i, idx) => (
+                <button
+                  key={i.kind}
+                  onClick={() => openIntent(i.kind)}
+                  className="press anim-rise flex w-full items-center gap-3 px-4 py-3.5 text-left"
+                  style={{ animationDelay: `${Math.min(idx * 35, 250)}ms` }}
+                >
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-card2 text-xl">
+                    {i.emoji}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[15px] font-bold text-ink">{t(i.labelKey)}</span>
+                    <span className="block text-[12px] leading-snug text-ink2">{t(i.hintKey)}</span>
+                  </span>
+                  <span className="shrink-0 text-[16px] font-bold text-ink2">›</span>
+                </button>
+              ))}
             </div>
-            {cyclePay !== null && (
-              <p className="num anim-rise rounded-2xl bg-card2 px-4 py-3 text-[13px] font-bold text-ink">
-                ⏱️ {weeklyHours}h/{lang === 'pt' ? 'sem' : 'wk'} = {formatMoney(cyclePay, currency, locale)}{' '}
-                <span className="font-semibold text-ink2">{t(FREQ_EVERY[incomeFrequency])}</span>
+
+            {mode === 'cloud' && (
+              <button
+                onClick={() => {
+                  setError('')
+                  setScreen('ai')
+                }}
+                className="press anim-rise flex w-full items-center gap-3 rounded-2xl border border-accent/40 bg-accent/5 px-4 py-3.5 text-left"
+              >
+                <span className="grad-accent flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-xl text-white">
+                  ✨
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[15px] font-bold text-ink">{t('intentAi')}</span>
+                  <span className="block text-[12px] leading-snug text-ink2">{t('intentAiHint')}</span>
+                </span>
+                <span className="shrink-0 text-[16px] font-bold text-ink2">›</span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {screen === 'ai' && (
+          <div className="anim-rise space-y-4">
+            <AiQuickAdd onDone={onClose} onPrefill={applyDraft} />
+            <button
+              onClick={() => setScreen('menu')}
+              className="press w-full py-1 text-[13px] font-semibold text-ink2"
+            >
+              ← {t('back')}
+            </button>
+          </div>
+        )}
+
+        {screen === 'form' && (
+          <div className="anim-rise space-y-4">
+            {aiFilled && (
+              <p className="anim-rise rounded-2xl bg-accent/10 px-4 py-2.5 text-[13px] font-bold text-accent">
+                ✨ {t('aiFilledBanner')}
               </p>
             )}
-          </>
-        )}
 
-        {kind === 'installment' && (
-          <div className="space-y-3">
-            <Field label={t('numInstallments')}>
-              <Segmented
-                options={[
-                  { value: 'count', label: `#️⃣ ${t('instModeCount')}` },
-                  { value: 'until', label: `📅 ${t('instModeUntil')}` },
-                ]}
-                value={instMode}
-                onChange={(v) => {
-                  setInstMode(v)
-                  // Entering "until" mode: seed the month from the current count
-                  // so the picker starts on a sensible value.
-                  if (v === 'until' && !endMonth)
-                    setEndMonth(addMonthsClamped(startDate, nInstallments - 1).slice(0, 7))
-                }}
-              />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              {instMode === 'count' ? (
-                <Field label={t('instModeCount')}>
-                  <input
-                    className={`${inputCls} num`}
-                    value={installments}
-                    onChange={(e) => setInstallments(e.target.value)}
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                  />
-                </Field>
-              ) : (
-                <Field label={t('lastInstallmentMonth')}>
-                  <input
-                    type="month"
-                    className={inputCls}
-                    value={endMonth}
-                    min={startDate.slice(0, 7)}
-                    onChange={(e) => setEndMonth(e.target.value)}
-                  />
-                </Field>
-              )}
-              <div className="flex flex-col justify-end gap-0.5 pb-3 text-sm font-semibold text-ink2">
-                {instMode === 'until' && endMonth && nInstallments >= 1 && (
-                  <span className="num anim-rise">= {t('installmentsComputed', { n: nInstallments })}</span>
-                )}
-                {amount !== null && amount > 0 && nInstallments >= 1 && (
-                  <span className="num">
-                    {t('totalOfPlan', { v: formatMoney(amount * nInstallments, currency, locale) })}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-          </div>
-        )}
-
-        {step === 'details' && (
-          <div className="anim-rise space-y-4">
-        {kind !== 'expense' && (
-          <Field label={t('name')}>
-            <input
-              className={inputCls}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={kind === 'income' ? t('incomeNamePlaceholder') : t('namePlaceholder')}
-            />
-          </Field>
-        )}
-
-        <Field label={t('owner')}>
-          <div className="flex gap-2">
-            {ownerOptions.map((o) => (
-              <Chip key={o.value} selected={owner === o.value} onClick={() => setOwner(o.value)}>
-                {o.label}
-              </Chip>
-            ))}
-          </div>
-        </Field>
-
-        {kind === 'expense' && (
-          <Field label={t('paidByLabel')}>
-            <Segmented
-              options={[
-                { value: 'a', label: snapshot.settings.nameA },
-                { value: 'b', label: snapshot.settings.nameB },
-              ]}
-              value={paidBy}
-              onChange={setPaidBy}
-            />
-          </Field>
-        )}
-
-        {kind === 'income' ? (
-          <>
-            <Field label={t('frequency')}>
-              <Segmented
-                options={incomeFreqOptions.map((f) => ({ value: f, label: t(f as TKey) }))}
-                value={incomeFrequency}
-                onChange={(f) => setFrequency(f)}
-              />
-            </Field>
-            {editing && (
-              <Field label={t('activeOne')}>
-                <Segmented
-                  options={[
-                    { value: 'on', label: `✅ ${t('activeOne')}` },
-                    { value: 'off', label: `⏸️ ${t('inactive')}` },
-                  ]}
-                  value={incomeActive ? 'on' : 'off'}
-                  onChange={(v) => setIncomeActive(v === 'on')}
+            {kind !== 'expense' && (
+              <Field label={t('name')}>
+                <input
+                  className={inputCls}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder={kind === 'income' ? t('incomeNamePlaceholder') : t('namePlaceholder')}
                 />
               </Field>
             )}
-          </>
-        ) : (
-          showFrequency && (
-            <Field label={t('frequency')}>
-              <div className="flex flex-wrap gap-2">
-                {itemFreqOptions.map((f) => (
-                  <Chip key={f} selected={frequency === f} onClick={() => setFrequency(f)}>
-                    {t(f as TKey)}
+
+            {kind === 'income' && (
+              <Field label={t('payBasis')}>
+                <Segmented
+                  options={[
+                    { value: 'fixed', label: `💵 ${t('basisFixed')}` },
+                    { value: 'hourly', label: `⏱️ ${t('basisHourly')}` },
+                  ]}
+                  value={basis}
+                  onChange={setBasis}
+                />
+              </Field>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field
+                label={
+                  isHourlyIncome ? t('hourlyRateLabel') : kindConfig ? t(kindConfig.amountLabelKey) : t('amount')
+                }
+              >
+                <input
+                  className={`${inputCls} num`}
+                  value={isHourlyIncome ? rateRaw : amountRaw}
+                  onChange={(e) => (isHourlyIncome ? setRateRaw(e.target.value) : setAmountRaw(e.target.value))}
+                  inputMode="decimal"
+                  placeholder={decimalSep === ',' ? '0,00' : '0.00'}
+                />
+                {!isHourlyIncome && amount !== null && /[.,]/.test(amountRaw) && (
+                  <span className="num mt-1 block text-[12px] font-semibold text-ink2">
+                    = {formatMoney(amount, currency, locale)}
+                  </span>
+                )}
+              </Field>
+              <Field label={t('currency')}>
+                <Segmented
+                  options={[
+                    { value: 'AUD', label: '🇦🇺 AUD' },
+                    { value: 'BRL', label: '🇧🇷 BRL' },
+                  ]}
+                  value={currency}
+                  onChange={setCurrency}
+                  className="py-[3px]"
+                />
+              </Field>
+            </div>
+
+            {isHourlyIncome && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label={t('hoursPerDayLabel')}>
+                    <input
+                      className={`${inputCls} num`}
+                      value={hoursPerDay}
+                      onChange={(e) => setHoursPerDay(e.target.value)}
+                      inputMode="decimal"
+                    />
+                  </Field>
+                  <Field label={t('daysPerWeekLabel')}>
+                    <input
+                      className={`${inputCls} num`}
+                      value={daysPerWeek}
+                      onChange={(e) => setDaysPerWeek(e.target.value)}
+                      inputMode="decimal"
+                    />
+                  </Field>
+                </div>
+                {cyclePay !== null && (
+                  <p className="num anim-rise rounded-2xl bg-card2 px-4 py-3 text-[13px] font-bold text-ink">
+                    ⏱️ {weeklyHours}h/{lang === 'pt' ? 'sem' : 'wk'} = {formatMoney(cyclePay, currency, locale)}{' '}
+                    <span className="font-semibold text-ink2">{t(FREQ_EVERY[incomeFrequency])}</span>
+                  </p>
+                )}
+              </>
+            )}
+
+            {kind === 'installment' && (
+              <div className="space-y-3">
+                <Field label={t('numInstallments')}>
+                  <Segmented
+                    options={[
+                      { value: 'count', label: `#️⃣ ${t('instModeCount')}` },
+                      { value: 'until', label: `📅 ${t('instModeUntil')}` },
+                    ]}
+                    value={instMode}
+                    onChange={(v) => {
+                      setInstMode(v)
+                      // Entering "until" mode: seed the month from the current count
+                      // so the picker starts on a sensible value.
+                      if (v === 'until' && !endMonth)
+                        setEndMonth(addMonthsClamped(startDate, nInstallments - 1).slice(0, 7))
+                    }}
+                  />
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  {instMode === 'count' ? (
+                    <Field label={t('instModeCount')}>
+                      <input
+                        className={`${inputCls} num`}
+                        value={installments}
+                        onChange={(e) => setInstallments(e.target.value)}
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                      />
+                    </Field>
+                  ) : (
+                    <Field label={t('lastInstallmentMonth')}>
+                      <input
+                        type="month"
+                        className={inputCls}
+                        value={endMonth}
+                        min={startDate.slice(0, 7)}
+                        onChange={(e) => setEndMonth(e.target.value)}
+                      />
+                    </Field>
+                  )}
+                  <div className="flex flex-col justify-end gap-0.5 pb-3 text-sm font-semibold text-ink2">
+                    {instMode === 'until' && endMonth && nInstallments >= 1 && (
+                      <span className="num anim-rise">= {t('installmentsComputed', { n: nInstallments })}</span>
+                    )}
+                    {amount !== null && amount > 0 && nInstallments >= 1 && (
+                      <span className="num">
+                        {t('totalOfPlan', { v: formatMoney(amount * nInstallments, currency, locale) })}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {kind === 'income' ? (
+              <>
+                <Field label={t('frequency')}>
+                  <Segmented
+                    options={incomeFreqOptions.map((f) => ({ value: f, label: t(f as TKey) }))}
+                    value={incomeFrequency}
+                    onChange={(f) => setFrequency(f)}
+                  />
+                </Field>
+                {editing && (
+                  <Field label={t('activeOne')}>
+                    <Segmented
+                      options={[
+                        { value: 'on', label: `✅ ${t('activeOne')}` },
+                        { value: 'off', label: `⏸️ ${t('inactive')}` },
+                      ]}
+                      value={incomeActive ? 'on' : 'off'}
+                      onChange={(v) => setIncomeActive(v === 'on')}
+                    />
+                  </Field>
+                )}
+              </>
+            ) : (
+              showFrequency && (
+                <Field label={t('frequency')}>
+                  <div className="flex flex-wrap gap-2">
+                    {itemFreqOptions.map((f) => (
+                      <Chip key={f} selected={frequency === f} onClick={() => setFrequency(f)}>
+                        {t(f as TKey)}
+                      </Chip>
+                    ))}
+                  </div>
+                </Field>
+              )
+            )}
+
+            <Field label={dateLabel}>
+              <input
+                type="date"
+                className={inputCls}
+                value={startDate}
+                onChange={(e) => e.target.value && setStartDate(e.target.value)}
+              />
+            </Field>
+
+            <Field label={t('owner')}>
+              <div className="flex gap-2">
+                {ownerOptions.map((o) => (
+                  <Chip key={o.value} selected={owner === o.value} onClick={() => setOwner(o.value)}>
+                    {o.label}
                   </Chip>
                 ))}
               </div>
             </Field>
-          )
-        )}
 
-        <Field label={dateLabel}>
-          <input
-            type="date"
-            className={inputCls}
-            value={startDate}
-            onChange={(e) => e.target.value && setStartDate(e.target.value)}
-          />
-        </Field>
-          </div>
-        )}
+            {kind === 'expense' && (
+              <Field label={t('paidByLabel')}>
+                <Segmented
+                  options={[
+                    { value: 'a', label: snapshot.settings.nameA },
+                    { value: 'b', label: snapshot.settings.nameB },
+                  ]}
+                  value={paidBy}
+                  onChange={setPaidBy}
+                />
+              </Field>
+            )}
 
-        {step === 'extras' && kind !== 'income' && (
-          <div className="anim-rise space-y-4">
-            <Field label={t('category')}>
-              <div className="flex flex-wrap gap-2">
-                {CATEGORIES.map((c) => (
-                  <Chip key={c} selected={category === c} onClick={() => setCategory(c)}>
-                    {categoryEmoji(c, snapshot.settings)} {t(CAT_KEY[c])}
-                  </Chip>
-                ))}
-                {customCategories.map((c) => (
-                  <Chip key={c.id} selected={category === c.id} onClick={() => setCategory(c.id)}>
-                    {c.emoji} {c.label}
-                  </Chip>
-                ))}
-                <Chip selected={newCatOpen} onClick={() => setNewCatOpen((v) => !v)}>
-                  ＋ {t('newCategory')}
-                </Chip>
-              </div>
-            </Field>
+            {kind !== 'income' && (
+              <>
+                <Field label={t('category')}>
+                  <div className="flex flex-wrap gap-2">
+                    {CATEGORIES.map((c) => (
+                      <Chip key={c} selected={category === c} onClick={() => setCategory(c)}>
+                        {categoryEmoji(c, snapshot.settings)} {t(CAT_KEY[c])}
+                      </Chip>
+                    ))}
+                    {customCategories.map((c) => (
+                      <Chip key={c.id} selected={category === c.id} onClick={() => setCategory(c.id)}>
+                        {c.emoji} {c.label}
+                      </Chip>
+                    ))}
+                    <Chip selected={newCatOpen} onClick={() => setNewCatOpen((v) => !v)}>
+                      ＋ {t('newCategory')}
+                    </Chip>
+                  </div>
+                </Field>
 
-            {newCatOpen && (
-              <div className="anim-rise flex items-end gap-2 rounded-2xl border border-line bg-card2 p-3">
-                <label className="block w-16 shrink-0">
-                  <span className="mb-1.5 block text-[13px] font-semibold text-ink2">
-                    {t('categoryEmoji')}
-                  </span>
-                  <input
-                    className={`${inputCls} text-center`}
-                    value={newCatEmoji}
-                    onChange={(e) => setNewCatEmoji(e.target.value)}
-                    placeholder="🏷️"
-                    maxLength={16}
-                  />
-                </label>
-                <label className="block min-w-0 flex-1">
-                  <span className="mb-1.5 block text-[13px] font-semibold text-ink2">
-                    {t('categoryName')}
-                  </span>
-                  <input
-                    className={inputCls}
-                    value={newCatName}
-                    onChange={(e) => setNewCatName(e.target.value)}
-                    placeholder={t('categoryNamePlaceholder')}
-                  />
-                </label>
-                <button
-                  onClick={createCategory}
-                  disabled={!newCatName.trim()}
-                  className="press grad-accent shrink-0 rounded-xl px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
-                >
-                  {t('createCategory')}
-                </button>
-              </div>
+                {newCatOpen && (
+                  <div className="anim-rise flex items-end gap-2 rounded-2xl border border-line bg-card2 p-3">
+                    <label className="block w-16 shrink-0">
+                      <span className="mb-1.5 block text-[13px] font-semibold text-ink2">
+                        {t('categoryEmoji')}
+                      </span>
+                      <input
+                        className={`${inputCls} text-center`}
+                        value={newCatEmoji}
+                        onChange={(e) => setNewCatEmoji(e.target.value)}
+                        placeholder="🏷️"
+                        maxLength={16}
+                      />
+                    </label>
+                    <label className="block min-w-0 flex-1">
+                      <span className="mb-1.5 block text-[13px] font-semibold text-ink2">
+                        {t('categoryName')}
+                      </span>
+                      <input
+                        className={inputCls}
+                        value={newCatName}
+                        onChange={(e) => setNewCatName(e.target.value)}
+                        placeholder={t('categoryNamePlaceholder')}
+                      />
+                    </label>
+                    <button
+                      onClick={createCategory}
+                      disabled={!newCatName.trim()}
+                      className="press grad-accent shrink-0 rounded-xl px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
+                    >
+                      {t('createCategory')}
+                    </button>
+                  </div>
+                )}
+              </>
             )}
 
             <Field label={t('notes')}>
@@ -799,93 +773,46 @@ export function AddSheet({
                 )}
               </Field>
             )}
+
+            {editing && editItem && (
+              <button
+                onClick={exportReminder}
+                className="press w-full rounded-2xl border border-line bg-card2 py-3 text-[14px] font-semibold text-ink"
+              >
+                📅 {t('calendarAdd')}
+              </button>
+            )}
+
+            {error && <p className="text-sm font-semibold text-bad">{error}</p>}
+
+            <div className="flex gap-3 pt-1">
+              {editing ? (
+                <button
+                  onClick={remove}
+                  className="press rounded-2xl border border-line px-4 py-3.5 text-[15px] font-bold text-bad"
+                >
+                  {t('delete')}
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    setError('')
+                    setScreen('menu')
+                  }}
+                  className="press rounded-2xl border border-line px-5 py-3.5 text-[15px] font-bold text-ink2"
+                >
+                  ← {t('back')}
+                </button>
+              )}
+              <button
+                onClick={save}
+                className="press grad-accent flex-1 rounded-2xl py-3.5 text-[15px] font-bold text-white shadow-md"
+              >
+                {t('save')}
+              </button>
+            </div>
           </div>
         )}
-
-        {step === 'review' && (
-          <div className="anim-rise space-y-2.5 rounded-2xl border border-line bg-card2 p-4">
-            <ReviewRow
-              label={t('reviewWhat')}
-              value={
-                kind === 'income'
-                  ? `💰 ${t('income')}`
-                  : kind === 'expense'
-                    ? `☕ ${t('quickExpense')}`
-                    : `${KIND_CONFIG[kind].emoji} ${t(KIND_CONFIG[kind].labelKey)}`
-              }
-            />
-            {kind !== 'expense' && <ReviewRow label={t('name')} value={name.trim() || '—'} />}
-            <ReviewRow
-              label={t('amount')}
-              value={
-                isHourlyIncome && cyclePay !== null
-                  ? `${formatMoney(rate ?? 0, currency, locale)}/h × ${weeklyHours}h = ${formatMoney(cyclePay, currency, locale)} ${t(FREQ_EVERY[incomeFrequency])}`
-                  : formatMoney(amount ?? 0, currency, locale)
-              }
-            />
-            {kind === 'installment' && amount !== null && (
-              <ReviewRow
-                label={t('numInstallments')}
-                value={`${nInstallments}x · ${t('totalOfPlan', { v: formatMoney(amount * nInstallments, currency, locale) })}`}
-              />
-            )}
-            {(kind === 'income' || showFrequency) && (
-              <ReviewRow
-                label={t('frequency')}
-                value={t((kind === 'income' ? incomeFrequency : frequency) as TKey)}
-              />
-            )}
-            <ReviewRow label={dateLabel} value={formatDay(startDate, locale)} />
-            <ReviewRow label={t('owner')} value={ownerLabel(owner, snapshot.settings, t)} />
-            {kind === 'expense' && (
-              <ReviewRow label={t('paidByLabel')} value={personName(paidBy, snapshot.settings)} />
-            )}
-            {kind !== 'income' && (
-              <ReviewRow
-                label={t('category')}
-                value={`${categoryEmoji(category, snapshot.settings)} ${categoryLabel(category, snapshot.settings, t)}`}
-              />
-            )}
-            {notes.trim() && <ReviewRow label={t('notes')} value={notes.trim()} />}
-            {receiptPreview && !receiptRemoved && <ReviewRow label={t('receiptLabel')} value="📷 ✓" />}
-          </div>
-        )}
-
-        {editing && editItem && step === 'details' && (
-          <button
-            onClick={exportReminder}
-            className="press w-full rounded-2xl border border-line bg-card2 py-3 text-[14px] font-semibold text-ink"
-          >
-            📅 {t('calendarAdd')}
-          </button>
-        )}
-
-        {error && <p className="text-sm font-semibold text-bad">{error}</p>}
-
-        <div className="flex gap-3 pt-1">
-          {editing && (
-            <button
-              onClick={remove}
-              className="press rounded-2xl border border-line px-4 py-3.5 text-[15px] font-bold text-bad"
-            >
-              {t('delete')}
-            </button>
-          )}
-          {stepIdx > 0 && (
-            <button
-              onClick={prevStep}
-              className="press rounded-2xl border border-line px-5 py-3.5 text-[15px] font-bold text-ink2"
-            >
-              ← {t('back')}
-            </button>
-          )}
-          <button
-            onClick={nextStep}
-            className="press grad-accent flex-1 rounded-2xl py-3.5 text-[15px] font-bold text-white shadow-md"
-          >
-            {stepIdx >= steps.length - 1 ? t('save') : `${t('continueBtn')} →`}
-          </button>
-        </div>
       </div>
     </Sheet>
   )

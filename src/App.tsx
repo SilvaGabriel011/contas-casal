@@ -8,11 +8,9 @@ import { buildOccurrences } from './lib/schedule'
 import { TabBar, type Tab } from './components/TabBar'
 import { AddSheet } from './components/AddSheet'
 import { Home } from './screens/Home'
-import { Items } from './screens/Items'
-import { IncomeScreen } from './screens/IncomeScreen'
 import { Settings } from './screens/Settings'
-import { SubNav, type SubEntry } from './components/SubNav'
-import { ExpensesScreen } from './screens/ExpensesScreen'
+import { RecordsScreen } from './screens/RecordsScreen'
+import { MenuScreen, type MenuGroup } from './screens/MenuScreen'
 import { HistoryScreen } from './screens/HistoryScreen'
 import { SettleScreen } from './screens/SettleScreen'
 import { TransfersScreen } from './screens/TransfersScreen'
@@ -182,46 +180,34 @@ function Shell() {
     setSheetOpen(true)
   }, [])
 
-  // Themed tabs: each one opens on a hub where every section is visible with
-  // a name and a one-line description — nothing hides behind a dropdown.
-  const moneyEntries: SubEntry[] = [
+  // The single Menu index: everything that isn't the home screen or the
+  // day-to-day records, in named groups — one place to find any function.
+  const menuGroups: MenuGroup[] = [
     {
-      key: 'bills',
-      emoji: '🧾',
-      labelKey: 'tabBills',
-      hintKey: 'menuBillsHint',
-      render: () => <Items profile={profile} onProfile={setProfile} onEditItem={openEditItem} />,
+      titleKey: 'groupDaily',
+      entries: [
+        { key: 'history', emoji: '🗓️', labelKey: 'menuHistory', hintKey: 'menuHistoryHint', render: () => <HistoryScreen /> },
+        { key: 'reconcile', emoji: '🏦', labelKey: 'menuReconcile', hintKey: 'menuReconcileHint', render: () => <ReconcileScreen /> },
+      ],
     },
     {
-      key: 'income',
-      emoji: '💰',
-      labelKey: 'tabIncome',
-      hintKey: 'menuIncomeHint',
-      render: () => <IncomeScreen profile={profile} onProfile={setProfile} onEditIncome={openEditIncome} />,
+      titleKey: 'groupPlan',
+      entries: [
+        { key: 'vault', emoji: '🔐', labelKey: 'menuVault', hintKey: 'menuVaultHint', render: () => <VaultScreen /> },
+        { key: 'goals', emoji: '🐷', labelKey: 'menuGoals', hintKey: 'menuGoalsHint', render: () => <GoalsScreen /> },
+        { key: 'charts', emoji: '📊', labelKey: 'menuCharts', hintKey: 'menuChartsHint', render: () => <ReportsScreen /> },
+        { key: 'tax', emoji: '🧾', labelKey: 'menuTax', hintKey: 'menuTaxHint', render: () => <TaxScreen /> },
+        { key: 'wrapped', emoji: '🎁', labelKey: 'menuWrapped', hintKey: 'menuWrappedHint', render: () => <WrappedScreen /> },
+      ],
     },
     {
-      key: 'expenses',
-      emoji: '☕',
-      labelKey: 'menuExpenses',
-      hintKey: 'menuExpensesHint',
-      render: () => <ExpensesScreen onEditExpense={openEditExpense} />,
+      titleKey: 'groupCouple',
+      entries: [
+        { key: 'settle', emoji: '🤝', labelKey: 'menuSettle', hintKey: 'menuSettleHint', render: () => <SettleScreen /> },
+        { key: 'transfers', emoji: '✈️', labelKey: 'menuTransfers', hintKey: 'menuTransfersHint', render: () => <TransfersScreen /> },
+        { key: 'todos', emoji: '✅', labelKey: 'menuTodos', hintKey: 'menuTodosHint', render: () => <TodosScreen /> },
+      ],
     },
-    { key: 'history', emoji: '🗓️', labelKey: 'menuHistory', hintKey: 'menuHistoryHint', render: () => <HistoryScreen /> },
-    { key: 'reconcile', emoji: '🏦', labelKey: 'menuReconcile', hintKey: 'menuReconcileHint', render: () => <ReconcileScreen /> },
-  ]
-
-  const planEntries: SubEntry[] = [
-    { key: 'vault', emoji: '🔐', labelKey: 'menuVault', hintKey: 'menuVaultHint', render: () => <VaultScreen /> },
-    { key: 'goals', emoji: '🐷', labelKey: 'menuGoals', hintKey: 'menuGoalsHint', render: () => <GoalsScreen /> },
-    { key: 'charts', emoji: '📊', labelKey: 'menuCharts', hintKey: 'menuChartsHint', render: () => <ReportsScreen /> },
-    { key: 'tax', emoji: '🧾', labelKey: 'menuTax', hintKey: 'menuTaxHint', render: () => <TaxScreen /> },
-    { key: 'wrapped', emoji: '🎁', labelKey: 'menuWrapped', hintKey: 'menuWrappedHint', render: () => <WrappedScreen /> },
-  ]
-
-  const coupleEntries: SubEntry[] = [
-    { key: 'settle', emoji: '🤝', labelKey: 'menuSettle', hintKey: 'menuSettleHint', render: () => <SettleScreen /> },
-    { key: 'transfers', emoji: '✈️', labelKey: 'menuTransfers', hintKey: 'menuTransfersHint', render: () => <TransfersScreen /> },
-    { key: 'todos', emoji: '✅', labelKey: 'menuTodos', hintKey: 'menuTodosHint', render: () => <TodosScreen /> },
   ]
 
   return (
@@ -248,9 +234,18 @@ function Shell() {
                 onOpenSettings={() => setSettingsOpen(true)}
               />
             )}
-            {tab === 'money' && <SubNav titleKey="tabMoney" subtitleKey="hubMoneySub" entries={moneyEntries} />}
-            {tab === 'plan' && <SubNav titleKey="tabPlan" subtitleKey="hubPlanSub" entries={planEntries} />}
-            {tab === 'couple' && <SubNav titleKey="tabCouple" subtitleKey="hubCoupleSub" entries={coupleEntries} />}
+            {tab === 'records' && (
+              <RecordsScreen
+                profile={profile}
+                onProfile={setProfile}
+                onEditItem={openEditItem}
+                onEditIncome={openEditIncome}
+                onEditExpense={openEditExpense}
+              />
+            )}
+            {tab === 'menu' && (
+              <MenuScreen groups={menuGroups} onOpenSettings={() => setSettingsOpen(true)} />
+            )}
           </div>
         )}
       </main>

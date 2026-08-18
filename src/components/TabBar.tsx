@@ -1,8 +1,8 @@
 import { useI18n } from '../lib/i18n'
 
-export type Tab = 'today' | 'money' | 'plan' | 'couple'
+export type Tab = 'today' | 'records' | 'menu'
 
-const ICONS: Record<Tab, string> = { today: '🏡', money: '💸', plan: '🐷', couple: '💞' }
+const ICONS: Record<Tab, string> = { today: '🏡', records: '🧾', menu: '📚' }
 
 export function TabBar({
   tab,
@@ -16,9 +16,8 @@ export function TabBar({
   const { t } = useI18n()
   const tabs: { key: Tab; label: string }[] = [
     { key: 'today', label: t('tabToday') },
-    { key: 'money', label: t('tabMoney') },
-    { key: 'plan', label: t('tabPlan') },
-    { key: 'couple', label: t('tabCouple') },
+    { key: 'records', label: t('tabRecords') },
+    { key: 'menu', label: t('tabMenu') },
   ]
 
   const renderTab = ({ key, label }: { key: Tab; label: string }) => (
