@@ -19,6 +19,31 @@ import { Chip, Field, inputCls, Segmented, Sheet } from './ui'
 type FormKind = ItemKind | 'income' | 'expense'
 type Screen = 'menu' | 'ai' | 'form'
 
+function ReceiptThumb({
+  src,
+  alt,
+  removeLabel,
+  onRemove,
+}: {
+  src: string
+  alt: string
+  removeLabel: string
+  onRemove: () => void
+}) {
+  return (
+    <div className="relative">
+      <img src={src} alt={alt} className="h-20 w-20 rounded-xl border border-line object-cover" />
+      <button
+        onClick={onRemove}
+        aria-label={removeLabel}
+        className="press absolute -top-1.5 -right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-bad text-[12px] font-bold text-white shadow"
+      >
+        ✕
+      </button>
+    </div>
+  )
+}
+
 // The intent list: verbs instead of a taxonomy quiz. Each row opens ONE
 // single-screen form with only that intent's fields.
 const INTENTS: { kind: FormKind; emoji: string; labelKey: TKey; hintKey: TKey }[] = [
@@ -56,7 +81,8 @@ export function AddSheet({
     deleteExpense,
     saveSettings,
     uploadReceipt,
-    getReceiptUrl,
+    listReceipts,
+    removeReceipt,
     deleteReceipt,
   } = useAppData()
   const { t, lang, locale, decimalSep } = useI18n()
@@ -86,9 +112,11 @@ export function AddSheet({
   const [newCatEmoji, setNewCatEmoji] = useState('')
   const [newCatName, setNewCatName] = useState('')
   const receiptInputRef = useRef<HTMLInputElement>(null)
-  const [receiptBlob, setReceiptBlob] = useState<Blob | null>(null)
-  const [receiptPreview, setReceiptPreview] = useState<string | null>(null)
-  const [receiptRemoved, setReceiptRemoved] = useState(false)
+  // The receipt gallery: what's already stored, what was added this session
+  // (uploaded on save) and which stored ones the user removed.
+  const [receipts, setReceipts] = useState<{ id: string; url: string }[]>([])
+  const [newReceipts, setNewReceipts] = useState<{ id: string; blob: Blob; preview: string }[]>([])
+  const [removedReceiptIds, setRemovedReceiptIds] = useState<string[]>([])
   const [aiFilled, setAiFilled] = useState(false)
 
   // AI quick-add with a single result: fill the detected intent's form and
@@ -133,14 +161,12 @@ export function AddSheet({
     setNewCatOpen(false)
     setNewCatEmoji('')
     setNewCatName('')
-    setReceiptBlob(null)
-    setReceiptPreview(null)
-    setReceiptRemoved(false)
+    setReceipts([])
+    setNewReceipts([])
+    setRemovedReceiptIds([])
     setAiFilled(false)
     if (editExpense && mode === 'cloud') {
-      getReceiptUrl(editExpense.id).then((url) => {
-        if (url) setReceiptPreview(url)
-      })
+      listReceipts(editExpense.id).then(setReceipts)
     }
     if (editItem) {
       setKind(editItem.kind)
@@ -281,12 +307,11 @@ export function AddSheet({
         createdAt: editExpense?.createdAt ?? new Date().toISOString(),
       })
       if (mode === 'cloud') {
-        if (receiptBlob) {
-          const ok = await uploadReceipt(expenseId, await downscaleImage(receiptBlob))
+        for (const r of newReceipts) {
+          const ok = await uploadReceipt(expenseId, r.id, await downscaleImage(r.blob))
           if (!ok) alert(t('receiptFailed'))
-        } else if (receiptRemoved && editExpense) {
-          await deleteReceipt(expenseId)
         }
+        for (const id of removedReceiptIds) await removeReceipt(expenseId, id)
       }
       return onClose()
     }
@@ -734,43 +759,51 @@ export function AddSheet({
                   ref={receiptInputRef}
                   type="file"
                   accept="image/*"
+                  multiple
                   className="hidden"
                   onChange={(e) => {
-                    const f = e.target.files?.[0]
-                    if (f) {
-                      setReceiptBlob(f)
-                      setReceiptRemoved(false)
-                      setReceiptPreview(URL.createObjectURL(f))
-                    }
+                    const added = Array.from(e.target.files ?? []).map((f) => ({
+                      id: crypto.randomUUID(),
+                      blob: f as Blob,
+                      preview: URL.createObjectURL(f),
+                    }))
+                    if (added.length > 0) setNewReceipts((prev) => [...prev, ...added])
                     e.target.value = ''
                   }}
                 />
-                {receiptPreview ? (
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={receiptPreview}
+                <div className="flex flex-wrap gap-2">
+                  {receipts
+                    .filter((r) => !removedReceiptIds.includes(r.id))
+                    .map((r) => (
+                      <ReceiptThumb
+                        key={r.id}
+                        src={r.url}
+                        alt={t('receiptLabel')}
+                        removeLabel={t('receiptRemove')}
+                        onRemove={() => setRemovedReceiptIds((prev) => [...prev, r.id])}
+                      />
+                    ))}
+                  {newReceipts.map((r) => (
+                    <ReceiptThumb
+                      key={r.id}
+                      src={r.preview}
                       alt={t('receiptLabel')}
-                      className="h-24 w-24 rounded-xl border border-line object-cover"
-                    />
-                    <button
-                      onClick={() => {
-                        setReceiptBlob(null)
-                        setReceiptPreview(null)
-                        if (editExpense) setReceiptRemoved(true)
+                      removeLabel={t('receiptRemove')}
+                      onRemove={() => {
+                        URL.revokeObjectURL(r.preview)
+                        setNewReceipts((prev) => prev.filter((n) => n.id !== r.id))
                       }}
-                      className="press rounded-xl border border-line px-3 py-2 text-[13px] font-bold text-bad"
-                    >
-                      {t('receiptRemove')}
-                    </button>
-                  </div>
-                ) : (
+                    />
+                  ))}
                   <button
                     onClick={() => receiptInputRef.current?.click()}
-                    className="press w-full rounded-xl border border-dashed border-line py-3 text-[13px] font-semibold text-ink2"
+                    aria-label={t('receiptAttach')}
+                    className="press flex h-20 w-20 flex-col items-center justify-center gap-0.5 rounded-xl border border-dashed border-line text-ink2"
                   >
-                    📷 {t('receiptAttach')}
+                    <span className="text-xl">📷</span>
+                    <span className="text-lg leading-none">＋</span>
                   </button>
-                )}
+                </div>
               </Field>
             )}
 

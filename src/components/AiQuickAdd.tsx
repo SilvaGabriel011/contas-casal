@@ -94,19 +94,41 @@ export function AiQuickAdd({
     })
   }
 
-  const scanReceipt = async (file: File) => {
-    if (busy) return
-    const dataUrl = await toDataUrl(file)
-    await parseWith((token) => parseReceipt(dataUrl, buildMeta(), lang, token), 'ai-receipt')
+  // Several photos at once: each image is parsed on its own and the drafts
+  // are pooled. One photo keeps the fill-the-form flow; more than one always
+  // lands in the review modal. A photo that fails is skipped unless nothing
+  // else succeeded.
+  const scanBatch = async (
+    files: File[],
+    parse: (dataUrl: string, token: string) => ReturnType<typeof parseReceipt>,
+    context: string,
+    alwaysReview: boolean
+  ) => {
+    if (busy || files.length === 0) return
+    await parseWith(
+      async (token) => {
+        const out: QuickDraft[] = []
+        let lastError: unknown = null
+        for (const file of files) {
+          try {
+            out.push(...(await parse(await toDataUrl(file), token)))
+          } catch (e) {
+            lastError = e
+          }
+        }
+        if (out.length === 0 && lastError) throw lastError
+        return out
+      },
+      context,
+      { alwaysReview: alwaysReview || files.length > 1 }
+    )
   }
 
-  const scanPrint = async (file: File) => {
-    if (busy) return
-    const dataUrl = await toDataUrl(file)
-    await parseWith((token) => parseScreenshot(dataUrl, buildMeta(), lang, token), 'ai-screenshot', {
-      alwaysReview: true,
-    })
-  }
+  const scanReceipts = (files: File[]) =>
+    scanBatch(files, (dataUrl, token) => parseReceipt(dataUrl, buildMeta(), lang, token), 'ai-receipt', false)
+
+  const scanPrints = (files: File[]) =>
+    scanBatch(files, (dataUrl, token) => parseScreenshot(dataUrl, buildMeta(), lang, token), 'ai-screenshot', true)
 
   const scanPdf = async (file: File) => {
     if (busy) return
@@ -151,10 +173,11 @@ export function AiQuickAdd({
           ref={receiptRef}
           type="file"
           accept="image/*"
+          multiple
           className="hidden"
           onChange={(e) => {
-            const f = e.target.files?.[0]
-            if (f) scanReceipt(f)
+            const fs = Array.from(e.target.files ?? [])
+            if (fs.length > 0) scanReceipts(fs)
             e.target.value = ''
           }}
         />
@@ -162,10 +185,11 @@ export function AiQuickAdd({
           ref={printRef}
           type="file"
           accept="image/*"
+          multiple
           className="hidden"
           onChange={(e) => {
-            const f = e.target.files?.[0]
-            if (f) scanPrint(f)
+            const fs = Array.from(e.target.files ?? [])
+            if (fs.length > 0) scanPrints(fs)
             e.target.value = ''
           }}
         />
