@@ -28,6 +28,11 @@ export function AiQuickAdd({
   const { snapshot, mode, getAccessToken } = useAppData()
   const { t, lang, locale } = useI18n()
   const [text, setText] = useState('')
+  // Images waiting to be sent along with the text — pasted straight into the
+  // box or picked with the buttons. Text + images go to the AI together.
+  const [images, setImages] = useState<
+    { id: string; file: File; kind: 'receipt' | 'screenshot'; preview: string }[]
+  >([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [review, setReview] = useState<QuickDraft[] | null>(null)
@@ -50,19 +55,23 @@ export function AiQuickAdd({
     job: (token: string) => Promise<QuickDraft[]>,
     context: string,
     { alwaysReview = false } = {}
-  ) => {
+  ): Promise<boolean> => {
     setBusy(true)
     setError('')
     try {
       const token = await getAccessToken()
       if (!token) throw new Error('unauthorized')
       const result = await job(token)
-      if (result.length === 0) setError(t('aiQuickNone'))
+      if (result.length === 0) {
+        setError(t('aiQuickNone'))
+        return false
+      }
       // One record typed by hand: fill the whole wizard so the user just
       // reviews and saves. Prints and multi-record results open the summary
       // modal instead — nothing is saved before the user confirms there.
-      else if (!alwaysReview && result.length === 1 && onPrefill) onPrefill(result[0])
+      if (!alwaysReview && result.length === 1 && onPrefill) onPrefill(result[0])
       else setReview(result)
+      return true
     } catch (e) {
       logError(context, e)
       const code = (e as Error).message
@@ -73,15 +82,68 @@ export function AiQuickAdd({
             ? t('aiErrorUnavailable')
             : t('aiErrorGeneric')
       )
+      return false
     } finally {
       setBusy(false)
     }
   }
 
-  const run = async () => {
-    if (!text.trim() || busy) return
+  const addImages = (files: File[], kind: 'receipt' | 'screenshot') => {
+    if (files.length === 0) return
+    setError('')
+    setImages((prev) => [
+      ...prev,
+      ...files.map((file) => ({ id: crypto.randomUUID(), file, kind, preview: URL.createObjectURL(file) })),
+    ])
+  }
+
+  const removeImage = (id: string) => {
+    setImages((prev) => {
+      const gone = prev.find((i) => i.id === id)
+      if (gone) URL.revokeObjectURL(gone.preview)
+      return prev.filter((i) => i.id !== id)
+    })
+  }
+
+  // One send button for everything: text alone is parsed as a description;
+  // with images attached, every image is read WITH the text as context
+  // ("cada shift é $260"), so picture and explanation land together.
+  const send = async () => {
+    if (busy) return
     if (dictation.listening) dictation.toggle(text)
-    await parseWith((token) => parseQuickAdd(text, buildMeta(), lang, token), 'ai-parse')
+    if (images.length === 0) {
+      if (!text.trim()) return
+      await parseWith((token) => parseQuickAdd(text, buildMeta(), lang, token), 'ai-parse')
+      return
+    }
+    const note = text.trim() || undefined
+    const batch = images
+    const ok = await parseWith(
+      async (token) => {
+        const out: QuickDraft[] = []
+        let lastError: unknown = null
+        for (const img of batch) {
+          try {
+            const dataUrl = await toDataUrl(img.file)
+            out.push(
+              ...(img.kind === 'receipt'
+                ? await parseReceipt(dataUrl, buildMeta(), lang, token, note)
+                : await parseScreenshot(dataUrl, buildMeta(), lang, token, note))
+            )
+          } catch (e) {
+            lastError = e
+          }
+        }
+        if (out.length === 0 && lastError) throw lastError
+        return out
+      },
+      'ai-images',
+      { alwaysReview: batch.length > 1 || batch.some((i) => i.kind === 'screenshot') }
+    )
+    if (ok) {
+      batch.forEach((i) => URL.revokeObjectURL(i.preview))
+      setImages([])
+    }
   }
 
   const toDataUrl = async (file: File) => {
@@ -91,20 +153,6 @@ export function AiQuickAdd({
       reader.onload = () => resolve(String(reader.result ?? ''))
       reader.onerror = () => reject(new Error('generic'))
       reader.readAsDataURL(blob)
-    })
-  }
-
-  const scanReceipt = async (file: File) => {
-    if (busy) return
-    const dataUrl = await toDataUrl(file)
-    await parseWith((token) => parseReceipt(dataUrl, buildMeta(), lang, token), 'ai-receipt')
-  }
-
-  const scanPrint = async (file: File) => {
-    if (busy) return
-    const dataUrl = await toDataUrl(file)
-    await parseWith((token) => parseScreenshot(dataUrl, buildMeta(), lang, token), 'ai-screenshot', {
-      alwaysReview: true,
     })
   }
 
@@ -143,18 +191,46 @@ export function AiQuickAdd({
         className={`${inputCls} min-h-[64px] resize-none`}
         value={text}
         onChange={(e) => setText(e.target.value)}
+        onPaste={(e) => {
+          const files = Array.from(e.clipboardData?.files ?? []).filter((f) => f.type.startsWith('image/'))
+          if (files.length > 0) {
+            e.preventDefault()
+            addImages(files, 'screenshot')
+          }
+        }}
         placeholder={t('aiQuickPlaceholder')}
         rows={2}
       />
+
+      {images.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {images.map((img) => (
+            <div key={img.id} className="anim-rise relative">
+              <img
+                src={img.preview}
+                alt=""
+                className="h-16 w-16 rounded-lg border border-line object-cover"
+              />
+              <button
+                onClick={() => removeImage(img.id)}
+                aria-label={t('receiptRemove')}
+                className="press absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-bad text-[11px] font-bold text-white shadow"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="flex gap-2">
         <input
           ref={receiptRef}
           type="file"
           accept="image/*"
+          multiple
           className="hidden"
           onChange={(e) => {
-            const f = e.target.files?.[0]
-            if (f) scanReceipt(f)
+            addImages(Array.from(e.target.files ?? []), 'receipt')
             e.target.value = ''
           }}
         />
@@ -162,10 +238,10 @@ export function AiQuickAdd({
           ref={printRef}
           type="file"
           accept="image/*"
+          multiple
           className="hidden"
           onChange={(e) => {
-            const f = e.target.files?.[0]
-            if (f) scanPrint(f)
+            addImages(Array.from(e.target.files ?? []), 'screenshot')
             e.target.value = ''
           }}
         />
@@ -238,8 +314,8 @@ export function AiQuickAdd({
           </button>
         )}
         <button
-          onClick={run}
-          disabled={busy || !text.trim()}
+          onClick={send}
+          disabled={busy || (!text.trim() && images.length === 0)}
           className="press grad-accent min-w-0 flex-1 rounded-xl py-2.5 text-[14px] font-bold text-white disabled:opacity-50"
         >
           {busy ? t('aiThinking') : t('aiQuickCreate')}

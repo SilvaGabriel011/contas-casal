@@ -229,7 +229,8 @@ drop policy if exists "own push subscriptions" on public.push_subscriptions;
 create policy "own push subscriptions" on public.push_subscriptions
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
--- Recibos: bucket privado, um arquivo por gasto ("<user_id>/<expense_id>.jpg").
+-- Recibos: bucket privado, pasta por gasto ("<user_id>/<expense_id>/<recibo>.jpg");
+-- recibos antigos (pré-galeria) ficam direto em "<user_id>/<expense_id>.jpg".
 insert into storage.buckets (id, name, public)
 values ('receipts', 'receipts', false)
 on conflict (id) do nothing;

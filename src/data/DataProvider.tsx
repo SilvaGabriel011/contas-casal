@@ -45,8 +45,9 @@ interface AppData {
   getCalendarFeed: () => Promise<string | null>
   enableCalendarFeed: (lang: string) => Promise<string | null>
   disableCalendarFeed: () => Promise<void>
-  uploadReceipt: (expenseId: string, blob: Blob) => Promise<boolean>
-  getReceiptUrl: (expenseId: string) => Promise<string | null>
+  uploadReceipt: (expenseId: string, receiptId: string, blob: Blob) => Promise<boolean>
+  listReceipts: (expenseId: string) => Promise<{ id: string; url: string }[]>
+  removeReceipt: (expenseId: string, receiptId: string) => Promise<void>
   deleteReceipt: (expenseId: string) => Promise<void>
   enablePush: (lang: string) => Promise<PushEnableResult>
   disablePush: () => Promise<void>
@@ -69,6 +70,9 @@ interface AppData {
 const Ctx = createContext<AppData | null>(null)
 
 const cacheKey = (userId: string) => `cc.cache.v1.${userId}`
+
+// A pre-gallery receipt stored right at "<user>/<expense>.jpg".
+const LEGACY_RECEIPT = '__legacy'
 
 function readSnapshotCache(userId: string): Snapshot | null {
   try {
@@ -356,34 +360,70 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await getSupabase(cfg).from('calendar_feeds').delete().eq('user_id', userIdRef.current)
   }, [])
 
-  // Receipts live in a private storage bucket keyed by expense id — no
-  // schema column needed, absence of the object simply means "no receipt".
-  const uploadReceipt = useCallback(async (expenseId: string, blob: Blob): Promise<boolean> => {
+  // Receipts live in a private storage bucket — no schema column needed.
+  // Each expense owns a folder ("<user>/<expense>/<receipt>.jpg"); receipts
+  // saved before the gallery existed sit right at "<user>/<expense>.jpg" and
+  // are surfaced under the LEGACY_RECEIPT id.
+  const uploadReceipt = useCallback(
+    async (expenseId: string, receiptId: string, blob: Blob): Promise<boolean> => {
+      const cfg = getCloudConfig()
+      if (!cfg || !userIdRef.current) return false
+      const { error } = await getSupabase(cfg)
+        .storage.from('receipts')
+        .upload(`${userIdRef.current}/${expenseId}/${receiptId}.jpg`, blob, {
+          upsert: true,
+          contentType: 'image/jpeg',
+        })
+      if (error) {
+        logError('receipt-upload', error)
+        return false
+      }
+      return true
+    },
+    []
+  )
+
+  const listReceipts = useCallback(async (expenseId: string): Promise<{ id: string; url: string }[]> => {
     const cfg = getCloudConfig()
-    if (!cfg || !userIdRef.current) return false
-    const { error } = await getSupabase(cfg)
-      .storage.from('receipts')
-      .upload(`${userIdRef.current}/${expenseId}.jpg`, blob, { upsert: true, contentType: 'image/jpeg' })
-    if (error) {
-      logError('receipt-upload', error)
-      return false
+    if (!cfg || !userIdRef.current) return []
+    const storage = getSupabase(cfg).storage.from('receipts')
+    const prefix = `${userIdRef.current}/${expenseId}`
+    const out: { id: string; url: string }[] = []
+    const { data: files } = await storage.list(prefix)
+    const names = (files ?? []).map((f) => f.name).filter((n) => n.endsWith('.jpg'))
+    if (names.length > 0) {
+      const { data: signed } = await storage.createSignedUrls(
+        names.map((n) => `${prefix}/${n}`),
+        3600
+      )
+      for (const s of signed ?? []) {
+        if (s.signedUrl && s.path)
+          out.push({ id: s.path.slice(prefix.length + 1).replace(/\.jpg$/, ''), url: s.signedUrl })
+      }
     }
-    return true
+    const { data: legacy } = await storage.createSignedUrl(`${prefix}.jpg`, 3600)
+    if (legacy?.signedUrl) out.push({ id: LEGACY_RECEIPT, url: legacy.signedUrl })
+    return out
   }, [])
 
-  const getReceiptUrl = useCallback(async (expenseId: string): Promise<string | null> => {
+  const removeReceipt = useCallback(async (expenseId: string, receiptId: string) => {
     const cfg = getCloudConfig()
-    if (!cfg || !userIdRef.current) return null
-    const { data } = await getSupabase(cfg)
-      .storage.from('receipts')
-      .createSignedUrl(`${userIdRef.current}/${expenseId}.jpg`, 3600)
-    return data?.signedUrl ?? null
+    if (!cfg || !userIdRef.current) return
+    const path =
+      receiptId === LEGACY_RECEIPT
+        ? `${userIdRef.current}/${expenseId}.jpg`
+        : `${userIdRef.current}/${expenseId}/${receiptId}.jpg`
+    await getSupabase(cfg).storage.from('receipts').remove([path])
   }, [])
 
   const deleteReceipt = useCallback(async (expenseId: string) => {
     const cfg = getCloudConfig()
     if (!cfg || !userIdRef.current) return
-    await getSupabase(cfg).storage.from('receipts').remove([`${userIdRef.current}/${expenseId}.jpg`])
+    const storage = getSupabase(cfg).storage.from('receipts')
+    const prefix = `${userIdRef.current}/${expenseId}`
+    const { data: files } = await storage.list(prefix)
+    const paths = (files ?? []).map((f) => `${prefix}/${f.name}`)
+    await storage.remove([...paths, `${prefix}.jpg`])
   }, [])
 
   const enablePush = useCallback(async (lang: string): Promise<PushEnableResult> => {
@@ -570,7 +610,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     enableCalendarFeed,
     disableCalendarFeed,
     uploadReceipt,
-    getReceiptUrl,
+    listReceipts,
+    removeReceipt,
     deleteReceipt,
     enablePush,
     disablePush,

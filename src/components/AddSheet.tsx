@@ -19,6 +19,31 @@ import { Chip, Field, inputCls, Segmented, Sheet } from './ui'
 type FormKind = ItemKind | 'income' | 'expense'
 type Screen = 'menu' | 'ai' | 'form'
 
+function ReceiptThumb({
+  src,
+  alt,
+  removeLabel,
+  onRemove,
+}: {
+  src: string
+  alt: string
+  removeLabel: string
+  onRemove: () => void
+}) {
+  return (
+    <div className="relative">
+      <img src={src} alt={alt} className="h-20 w-20 rounded-xl border border-line object-cover" />
+      <button
+        onClick={onRemove}
+        aria-label={removeLabel}
+        className="press absolute -top-1.5 -right-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-bad text-[12px] font-bold text-white shadow"
+      >
+        ✕
+      </button>
+    </div>
+  )
+}
+
 // The intent list: verbs instead of a taxonomy quiz. Each row opens ONE
 // single-screen form with only that intent's fields.
 const INTENTS: { kind: FormKind; emoji: string; labelKey: TKey; hintKey: TKey }[] = [
@@ -56,7 +81,8 @@ export function AddSheet({
     deleteExpense,
     saveSettings,
     uploadReceipt,
-    getReceiptUrl,
+    listReceipts,
+    removeReceipt,
     deleteReceipt,
   } = useAppData()
   const { t, lang, locale, decimalSep } = useI18n()
@@ -86,9 +112,11 @@ export function AddSheet({
   const [newCatEmoji, setNewCatEmoji] = useState('')
   const [newCatName, setNewCatName] = useState('')
   const receiptInputRef = useRef<HTMLInputElement>(null)
-  const [receiptBlob, setReceiptBlob] = useState<Blob | null>(null)
-  const [receiptPreview, setReceiptPreview] = useState<string | null>(null)
-  const [receiptRemoved, setReceiptRemoved] = useState(false)
+  // The receipt gallery: what's already stored, what was added this session
+  // (uploaded on save) and which stored ones the user removed.
+  const [receipts, setReceipts] = useState<{ id: string; url: string }[]>([])
+  const [newReceipts, setNewReceipts] = useState<{ id: string; blob: Blob; preview: string }[]>([])
+  const [removedReceiptIds, setRemovedReceiptIds] = useState<string[]>([])
   const [aiFilled, setAiFilled] = useState(false)
 
   // AI quick-add with a single result: fill the detected intent's form and
@@ -103,7 +131,11 @@ export function AddSheet({
     setStartDate(d.date ?? todayISO())
     if (d.type === 'income') {
       setOwner(d.owner === 'b' ? 'b' : 'a')
-      setFrequency(d.frequency === 'weekly' || d.frequency === 'fortnightly' ? d.frequency : 'monthly')
+      setFrequency(
+        d.frequency === 'weekly' || d.frequency === 'fortnightly' || d.frequency === 'once'
+          ? d.frequency
+          : 'monthly'
+      )
       setBasis('fixed')
     } else {
       setOwner(d.owner ?? 'shared')
@@ -133,14 +165,12 @@ export function AddSheet({
     setNewCatOpen(false)
     setNewCatEmoji('')
     setNewCatName('')
-    setReceiptBlob(null)
-    setReceiptPreview(null)
-    setReceiptRemoved(false)
+    setReceipts([])
+    setNewReceipts([])
+    setRemovedReceiptIds([])
     setAiFilled(false)
     if (editExpense && mode === 'cloud') {
-      getReceiptUrl(editExpense.id).then((url) => {
-        if (url) setReceiptPreview(url)
-      })
+      listReceipts(editExpense.id).then(setReceipts)
     }
     if (editItem) {
       setKind(editItem.kind)
@@ -239,7 +269,7 @@ export function AddSheet({
   const nHoursPerDay = parseAmount(hoursPerDay, decimalSep) ?? 0
   const nDaysPerWeek = parseAmount(daysPerWeek, decimalSep) ?? 0
   const weeklyHours = nHoursPerDay * nDaysPerWeek
-  const incomeFrequency: IncomeFrequency = frequency === 'yearly' || frequency === 'once' ? 'monthly' : frequency
+  const incomeFrequency: IncomeFrequency = frequency === 'yearly' ? 'monthly' : frequency
   const cyclePay =
     rate !== null && weeklyHours > 0 ? hourlyPerCycle(rate, nHoursPerDay, nDaysPerWeek, incomeFrequency) : null
 
@@ -281,12 +311,11 @@ export function AddSheet({
         createdAt: editExpense?.createdAt ?? new Date().toISOString(),
       })
       if (mode === 'cloud') {
-        if (receiptBlob) {
-          const ok = await uploadReceipt(expenseId, await downscaleImage(receiptBlob))
+        for (const r of newReceipts) {
+          const ok = await uploadReceipt(expenseId, r.id, await downscaleImage(r.blob))
           if (!ok) alert(t('receiptFailed'))
-        } else if (receiptRemoved && editExpense) {
-          await deleteReceipt(expenseId)
         }
+        for (const id of removedReceiptIds) await removeReceipt(expenseId, id)
       }
       return onClose()
     }
@@ -357,7 +386,7 @@ export function AddSheet({
     shareIcs(`${editItem.name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-')}-lembretes.ics`, ics)
   }
 
-  const incomeFreqOptions: IncomeFrequency[] = ['weekly', 'fortnightly', 'monthly']
+  const incomeFreqOptions: IncomeFrequency[] = ['weekly', 'fortnightly', 'monthly', 'once']
   const itemFreqOptions: Frequency[] = ['weekly', 'fortnightly', 'monthly', 'yearly', 'once']
 
   const ownerOptions: { value: Owner; label: string }[] = [
@@ -370,7 +399,9 @@ export function AddSheet({
   const showFrequency = kind !== 'expense' && !kindConfig?.forcedFrequency
   const dateLabel =
     kind === 'income'
-      ? t('nextPayDate')
+      ? incomeFrequency === 'once'
+        ? t('payDateOnce')
+        : t('nextPayDate')
       : kind === 'expense'
         ? t('expenseDate')
         : frequency === 'once' && kind !== 'purchase'
@@ -466,7 +497,7 @@ export function AddSheet({
               </Field>
             )}
 
-            {kind === 'income' && (
+            {kind === 'income' && incomeFrequency !== 'once' && (
               <Field label={t('payBasis')}>
                 <Segmented
                   options={[
@@ -597,11 +628,22 @@ export function AddSheet({
             {kind === 'income' ? (
               <>
                 <Field label={t('frequency')}>
-                  <Segmented
-                    options={incomeFreqOptions.map((f) => ({ value: f, label: t(f as TKey) }))}
-                    value={incomeFrequency}
-                    onChange={(f) => setFrequency(f)}
-                  />
+                  <div className="flex flex-wrap gap-2">
+                    {incomeFreqOptions.map((f) => (
+                      <Chip
+                        key={f}
+                        selected={incomeFrequency === f}
+                        onClick={() => {
+                          setFrequency(f)
+                          // A one-off (an extra shift) is a plain amount — the
+                          // hourly calculator only makes sense for a cadence.
+                          if (f === 'once') setBasis('fixed')
+                        }}
+                      >
+                        {t(f as TKey)}
+                      </Chip>
+                    ))}
+                  </div>
                 </Field>
                 {editing && (
                   <Field label={t('activeOne')}>
@@ -734,43 +776,51 @@ export function AddSheet({
                   ref={receiptInputRef}
                   type="file"
                   accept="image/*"
+                  multiple
                   className="hidden"
                   onChange={(e) => {
-                    const f = e.target.files?.[0]
-                    if (f) {
-                      setReceiptBlob(f)
-                      setReceiptRemoved(false)
-                      setReceiptPreview(URL.createObjectURL(f))
-                    }
+                    const added = Array.from(e.target.files ?? []).map((f) => ({
+                      id: crypto.randomUUID(),
+                      blob: f as Blob,
+                      preview: URL.createObjectURL(f),
+                    }))
+                    if (added.length > 0) setNewReceipts((prev) => [...prev, ...added])
                     e.target.value = ''
                   }}
                 />
-                {receiptPreview ? (
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={receiptPreview}
+                <div className="flex flex-wrap gap-2">
+                  {receipts
+                    .filter((r) => !removedReceiptIds.includes(r.id))
+                    .map((r) => (
+                      <ReceiptThumb
+                        key={r.id}
+                        src={r.url}
+                        alt={t('receiptLabel')}
+                        removeLabel={t('receiptRemove')}
+                        onRemove={() => setRemovedReceiptIds((prev) => [...prev, r.id])}
+                      />
+                    ))}
+                  {newReceipts.map((r) => (
+                    <ReceiptThumb
+                      key={r.id}
+                      src={r.preview}
                       alt={t('receiptLabel')}
-                      className="h-24 w-24 rounded-xl border border-line object-cover"
-                    />
-                    <button
-                      onClick={() => {
-                        setReceiptBlob(null)
-                        setReceiptPreview(null)
-                        if (editExpense) setReceiptRemoved(true)
+                      removeLabel={t('receiptRemove')}
+                      onRemove={() => {
+                        URL.revokeObjectURL(r.preview)
+                        setNewReceipts((prev) => prev.filter((n) => n.id !== r.id))
                       }}
-                      className="press rounded-xl border border-line px-3 py-2 text-[13px] font-bold text-bad"
-                    >
-                      {t('receiptRemove')}
-                    </button>
-                  </div>
-                ) : (
+                    />
+                  ))}
                   <button
                     onClick={() => receiptInputRef.current?.click()}
-                    className="press w-full rounded-xl border border-dashed border-line py-3 text-[13px] font-semibold text-ink2"
+                    aria-label={t('receiptAttach')}
+                    className="press flex h-20 w-20 flex-col items-center justify-center gap-0.5 rounded-xl border border-dashed border-line text-ink2"
                   >
-                    📷 {t('receiptAttach')}
+                    <span className="text-xl">📷</span>
+                    <span className="text-lg leading-none">＋</span>
                   </button>
-                )}
+                </div>
               </Field>
             )}
 

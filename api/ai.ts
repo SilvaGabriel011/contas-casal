@@ -24,6 +24,15 @@ function jsonError(status: number, code: string): Response {
 
 type RecordsMeta = { today?: string; nameA?: string; nameB?: string; categories?: string[] }
 
+// The user can send an explanation along with an image ("each shift pays
+// $260", "os de domingo são R$ 320") — it rides in the same message so the
+// model reads picture and text together.
+function withUserNote(instruction: string, note: unknown): string {
+  const clean = String(note ?? '').slice(0, 2000).trim()
+  if (!clean) return instruction
+  return `${instruction}\nThe user also wrote this about the image — treat it as authoritative for amounts, values per line, dates, owner and frequency:\n"""${clean}"""`
+}
+
 // Shared prompt for the modes that extract structured finance records the user
 // reviews before saving: image "prints" (screenshot) and extracted statement
 // text from PDFs/CSVs (statement). Only the opening sentence differs.
@@ -38,7 +47,7 @@ function recordsSystem(meta: RecordsMeta, source: 'screenshot' | 'statement'): s
     `Valid category ids: ${(meta.categories ?? []).join(', ')}.`,
     'Output ONLY a JSON object: {"records":[...]}. Each record:',
     '{"type":"expense"|"bill"|"subscription"|"installment"|"purchase"|"income","name":string?,"note":string?,"amount":number,"currency":"AUD"|"BRL","category":string?,"owner":"a"|"b"|"shared"?,"paidBy":"a"|"b"?,"date":"YYYY-MM-DD"?,"frequency":"weekly"|"fortnightly"|"monthly"|"yearly"|"once"?,"installmentsTotal":number?}',
-    'One record per distinct charge, bill or line. Recurring obligations (rent, utilities, plans, streaming) -> bill or subscription with frequency and next due date. Brazilian card instalment lines (e.g. "3/10") -> installment with the per-instalment amount and installmentsTotal = the total count. Day-to-day money already spent -> expense (note = short description). Salary/pay/deposit lines -> income.',
+    'One record per distinct charge, bill or line. Recurring obligations (rent, utilities, plans, streaming) -> bill or subscription with frequency and next due date. Brazilian card instalment lines (e.g. "3/10") -> installment with the per-instalment amount and installmentsTotal = the total count. Day-to-day money already spent -> expense (note = short description). Salary/pay/deposit lines -> income; a single shift or other one-off payment -> income with frequency "once".',
     'currency: "R$" or Brazilian number formatting (1.234,56) -> BRL; "$"/"A$" or Australian context -> AUD.',
     'Dates: resolve to YYYY-MM-DD; a date without a year means its closest plausible occurrence; omit the date if unreadable.',
     'name = short readable name (merchant or bill). category = best guess from the valid ids.',
@@ -87,6 +96,7 @@ export default async function handler(req: Request): Promise<Response> {
     mode?: string
     text?: string
     image?: string
+    note?: string
     meta?: { today?: string; nameA?: string; nameB?: string; categories?: string[] }
   }
   try {
@@ -124,7 +134,7 @@ export default async function handler(req: Request): Promise<Response> {
           {
             role: 'user',
             content: [
-              { type: 'text', text: 'Extract the total from this receipt.' },
+              { type: 'text', text: withUserNote('Extract the total from this receipt.', body.note) },
               { type: 'image_url', image_url: { url: image, detail: 'high' } },
             ],
           },
@@ -165,7 +175,7 @@ export default async function handler(req: Request): Promise<Response> {
           {
             role: 'user',
             content: [
-              { type: 'text', text: 'Extract every finance record from this screenshot.' },
+              { type: 'text', text: withUserNote('Extract every finance record from this screenshot.', body.note) },
               { type: 'image_url', image_url: { url: image, detail: 'high' } },
             ],
           },
@@ -231,7 +241,7 @@ export default async function handler(req: Request): Promise<Response> {
       `Valid category ids: ${(meta.categories ?? []).join(', ')}.`,
       'Output ONLY a JSON object: {"records":[...]}. Each record:',
       '{"type":"expense"|"bill"|"subscription"|"installment"|"purchase"|"income","name":string?,"note":string?,"amount":number,"currency":"AUD"|"BRL","category":string?,"owner":"a"|"b"|"shared"?,"paidBy":"a"|"b"?,"date":"YYYY-MM-DD"?,"frequency":"weekly"|"fortnightly"|"monthly"|"yearly"|"once"?,"installmentsTotal":number?}',
-      'Rules: money already spent day-to-day -> expense (note = short description). Recurring obligations -> bill or subscription with frequency and first due date. Brazilian card instalment purchases -> installment with amount per instalment and installmentsTotal. One-off planned purchases -> purchase. Salaries/wages -> income (amount per pay cycle).',
+      'Rules: money already spent day-to-day -> expense (note = short description). Recurring obligations -> bill or subscription with frequency and first due date. Brazilian card instalment purchases -> installment with amount per instalment and installmentsTotal. One-off planned purchases -> purchase. Salaries/wages -> income (amount per pay cycle); a single shift or other one-off payment -> income with frequency "once".',
       'If the user gives when the instalments END instead of a count ("parcelas até outubro", "paying until March 2027"), set installmentsTotal to the number of monthly payments from the first payment month (date, or today if absent) through that month, inclusive; a bare month name means its next occurrence.',
       'currency: "R$", "reais", "conta do Brasil" -> BRL; default AUD. owner default "shared"; if a partner is named, map to a/b. paidBy only for expenses when the payer is explicit.',
       'Relative dates ("ontem", "sexta", "dia 15") resolve against today. If nothing extractable: {"records":[]}.',
