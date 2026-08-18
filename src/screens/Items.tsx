@@ -8,6 +8,7 @@ import { useI18n } from '../lib/i18n'
 import { formatMoney, formatMoneyShort, CURRENCY_FLAG } from '../lib/money'
 import { installmentProgress, isItemFinished, monthlyEquivalent, visibleToProfile } from '../lib/schedule'
 import { ProfileSwitcher } from '../components/ProfileSwitcher'
+import { BrCountdownCard } from '../components/BrCountdownCard'
 import { Chip, EmptyState, inputCls } from '../components/ui'
 
 type StatusFilter = 'active' | 'finished' | 'all'
@@ -47,6 +48,8 @@ export function Items({
       </header>
 
       <ProfileSwitcher profile={profile} onChange={onProfile} />
+
+      <BrCountdownCard />
 
       <input
         className={inputCls}

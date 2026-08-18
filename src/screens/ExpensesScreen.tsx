@@ -8,6 +8,7 @@ import { categoryEmoji, categoryLabel } from '../lib/categories'
 import { personName } from '../lib/owners'
 import { expensesFor, shiftMonth, spentInCategory, totalsByCurrency, monthOf } from '../lib/expenses'
 import { todayISO } from '../lib/dates'
+import { SpendingAlerts } from '../components/SpendingAlerts'
 import { Chip, EmptyState, Field, inputCls, Segmented } from '../components/ui'
 
 export function ExpensesScreen({ onEditExpense }: { onEditExpense: (e: Expense) => void }) {
@@ -80,6 +81,8 @@ export function ExpensesScreen({ onEditExpense }: { onEditExpense: (e: Expense) 
           ›
         </button>
       </div>
+
+      <SpendingAlerts month={month} />
 
       <div className="anim-rise rounded-3xl border border-line bg-card p-5">
         <p className="text-[13px] font-semibold text-ink2">{t('monthTotal')}</p>

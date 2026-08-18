@@ -7,6 +7,7 @@ import { categoryEmoji, categoryLabel } from '../lib/categories'
 import { ownerLabel, personName } from '../lib/owners'
 import { lastMonths, outflowByMonth, categoryBreakdown, personBreakdown } from '../lib/reports'
 import { coupleBalance } from '../lib/insights'
+import { ForecastCard } from '../components/ForecastCard'
 import { EmptyState, Segmented } from '../components/ui'
 
 const W = 320
@@ -60,6 +61,8 @@ export function ReportsScreen() {
       <header className="pt-1">
         <h1 className="text-2xl font-extrabold tracking-tight text-ink">{t('reportsTitle')}</h1>
       </header>
+
+      <ForecastCard />
 
       <Segmented<Currency>
         options={[

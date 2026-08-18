@@ -182,42 +182,46 @@ function Shell() {
     setSheetOpen(true)
   }, [])
 
-  // Themed tabs (concept B): everything has a logical home, "More" is gone.
+  // Themed tabs: each one opens on a hub where every section is visible with
+  // a name and a one-line description — nothing hides behind a dropdown.
   const moneyEntries: SubEntry[] = [
     {
       key: 'bills',
       emoji: '🧾',
       labelKey: 'tabBills',
+      hintKey: 'menuBillsHint',
       render: () => <Items profile={profile} onProfile={setProfile} onEditItem={openEditItem} />,
     },
     {
       key: 'income',
       emoji: '💰',
       labelKey: 'tabIncome',
+      hintKey: 'menuIncomeHint',
       render: () => <IncomeScreen profile={profile} onProfile={setProfile} onEditIncome={openEditIncome} />,
     },
     {
       key: 'expenses',
       emoji: '☕',
-      labelKey: 'chipExpenses',
+      labelKey: 'menuExpenses',
+      hintKey: 'menuExpensesHint',
       render: () => <ExpensesScreen onEditExpense={openEditExpense} />,
     },
-    { key: 'history', emoji: '🗓️', labelKey: 'menuHistory', render: () => <HistoryScreen /> },
-    { key: 'reconcile', emoji: '🏦', labelKey: 'chipReconcile', render: () => <ReconcileScreen /> },
+    { key: 'history', emoji: '🗓️', labelKey: 'menuHistory', hintKey: 'menuHistoryHint', render: () => <HistoryScreen /> },
+    { key: 'reconcile', emoji: '🏦', labelKey: 'menuReconcile', hintKey: 'menuReconcileHint', render: () => <ReconcileScreen /> },
   ]
 
   const planEntries: SubEntry[] = [
-    { key: 'vault', emoji: '🔐', labelKey: 'menuVault', render: () => <VaultScreen /> },
-    { key: 'goals', emoji: '🐷', labelKey: 'menuGoals', render: () => <GoalsScreen /> },
-    { key: 'charts', emoji: '📊', labelKey: 'menuCharts', render: () => <ReportsScreen /> },
-    { key: 'tax', emoji: '🧾', labelKey: 'chipTax', render: () => <TaxScreen /> },
-    { key: 'wrapped', emoji: '🎁', labelKey: 'menuWrapped', render: () => <WrappedScreen /> },
+    { key: 'vault', emoji: '🔐', labelKey: 'menuVault', hintKey: 'menuVaultHint', render: () => <VaultScreen /> },
+    { key: 'goals', emoji: '🐷', labelKey: 'menuGoals', hintKey: 'menuGoalsHint', render: () => <GoalsScreen /> },
+    { key: 'charts', emoji: '📊', labelKey: 'menuCharts', hintKey: 'menuChartsHint', render: () => <ReportsScreen /> },
+    { key: 'tax', emoji: '🧾', labelKey: 'menuTax', hintKey: 'menuTaxHint', render: () => <TaxScreen /> },
+    { key: 'wrapped', emoji: '🎁', labelKey: 'menuWrapped', hintKey: 'menuWrappedHint', render: () => <WrappedScreen /> },
   ]
 
   const coupleEntries: SubEntry[] = [
-    { key: 'settle', emoji: '🤝', labelKey: 'chipSettle', render: () => <SettleScreen /> },
-    { key: 'transfers', emoji: '✈️', labelKey: 'chipTransfers', render: () => <TransfersScreen /> },
-    { key: 'todos', emoji: '✅', labelKey: 'menuTodos', render: () => <TodosScreen /> },
+    { key: 'settle', emoji: '🤝', labelKey: 'menuSettle', hintKey: 'menuSettleHint', render: () => <SettleScreen /> },
+    { key: 'transfers', emoji: '✈️', labelKey: 'menuTransfers', hintKey: 'menuTransfersHint', render: () => <TransfersScreen /> },
+    { key: 'todos', emoji: '✅', labelKey: 'menuTodos', hintKey: 'menuTodosHint', render: () => <TodosScreen /> },
   ]
 
   return (
@@ -244,9 +248,9 @@ function Shell() {
                 onOpenSettings={() => setSettingsOpen(true)}
               />
             )}
-            {tab === 'money' && <SubNav storageKey="cc.subnav.money" entries={moneyEntries} />}
-            {tab === 'plan' && <SubNav storageKey="cc.subnav.plan" entries={planEntries} />}
-            {tab === 'couple' && <SubNav storageKey="cc.subnav.couple" entries={coupleEntries} />}
+            {tab === 'money' && <SubNav titleKey="tabMoney" subtitleKey="hubMoneySub" entries={moneyEntries} />}
+            {tab === 'plan' && <SubNav titleKey="tabPlan" subtitleKey="hubPlanSub" entries={planEntries} />}
+            {tab === 'couple' && <SubNav titleKey="tabCouple" subtitleKey="hubCoupleSub" entries={coupleEntries} />}
           </div>
         )}
       </main>

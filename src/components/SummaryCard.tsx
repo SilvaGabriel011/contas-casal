@@ -4,6 +4,10 @@ import { formatMoney, formatMoneyShort, CURRENCY_FLAG } from '../lib/money'
 import { useCountUp } from '../lib/useCountUp'
 import { ProgressBar } from './ui'
 
+// The month at a glance for one currency. The headline is the estimated
+// leftover, followed by the ledger that produces it (income − bills −
+// spending), so the number explains itself. Without income the headline
+// falls back to the month's bill total.
 export function SummaryCard({
   currency,
   monthLabel,
@@ -22,7 +26,21 @@ export function SummaryCard({
   const { t, locale } = useI18n()
   const remaining = Math.max(0, totalMonth - paidMonth)
   const leftover = incomeMonth - totalMonth - expensesMonth
-  const animatedTotal = useCountUp(totalMonth)
+  const hasIncome = incomeMonth > 0
+  const hero = hasIncome ? leftover : totalMonth
+  const animatedHero = useCountUp(hero)
+
+  const ledger: { emoji: string; label: string; value: string }[] = hasIncome
+    ? [
+        { emoji: '💵', label: t('sumIncome'), value: `+${formatMoneyShort(incomeMonth, currency, locale)}` },
+        ...(totalMonth > 0
+          ? [{ emoji: '🧾', label: t('sumBills'), value: `−${formatMoneyShort(totalMonth, currency, locale)}` }]
+          : []),
+        ...(expensesMonth > 0
+          ? [{ emoji: '☕', label: t('sumSpending'), value: `−${formatMoneyShort(expensesMonth, currency, locale)}` }]
+          : []),
+      ]
+    : []
 
   return (
     <div
@@ -41,45 +59,46 @@ export function SummaryCard({
       </div>
 
       <p className="num mt-3 text-[34px] leading-none font-extrabold tracking-tight min-[430px]:text-[40px]">
-        {formatMoney(animatedTotal, currency, locale)}
+        {hasIncome && hero >= 0 ? '+' : ''}
+        {formatMoney(animatedHero, currency, locale)}
       </p>
-      <p className="mt-1 text-[13px] font-medium text-white/85">{t('ofBills')} · {t('thisMonth')}</p>
+      <p className="mt-1 text-[13px] font-medium text-white/85">
+        {hasIncome
+          ? `${leftover >= 0 ? '🌱' : '⚠️'} ${t('leftoverEstimate')} · ${t('thisMonth')}`
+          : `${t('ofBills')} · ${t('thisMonth')}`}
+      </p>
 
-      <ProgressBar ratio={totalMonth > 0 ? paidMonth / totalMonth : 1} className="mt-4" />
-      <div className="num mt-2 flex justify-between text-[12px] font-semibold text-white/95">
-        {totalMonth > 0 && remaining === 0 ? (
-          <span>{t('allPaidMonth')}</span>
-        ) : (
-          <>
-            <span>
-              ✓ {formatMoneyShort(paidMonth, currency, locale)} {t('paidSoFar')}
-            </span>
-            <span>
-              {formatMoneyShort(remaining, currency, locale)} {t('remaining')}
-            </span>
-          </>
-        )}
-      </div>
-
-      {(incomeMonth > 0 || expensesMonth > 0) && (
-        <div className="num mt-4 flex flex-wrap gap-2 border-t border-white/25 pt-3 text-[12px] font-semibold">
-          {incomeMonth > 0 && (
-            <span className="rounded-full bg-white/18 px-2.5 py-1">
-              💵 {formatMoneyShort(incomeMonth, currency, locale)} {t('incomePerMonth')}
-            </span>
-          )}
-          {expensesMonth > 0 && (
-            <span className="rounded-full bg-white/18 px-2.5 py-1">
-              ☕ {formatMoneyShort(expensesMonth, currency, locale)} {t('spendingShort')}
-            </span>
-          )}
-          {incomeMonth > 0 && (
-            <span className={`rounded-full px-2.5 py-1 ${leftover >= 0 ? 'bg-white/18' : 'bg-black/25'}`}>
-              {leftover >= 0 ? '🌱' : '⚠️'} {formatMoneyShort(leftover, currency, locale)}{' '}
-              {t('leftoverEstimate')}
-            </span>
-          )}
+      {ledger.length > 0 && (
+        <div className="num mt-4 space-y-1.5 border-t border-white/25 pt-3 text-[13px] font-semibold">
+          {ledger.map((row) => (
+            <div key={row.label} className="flex items-baseline justify-between gap-2">
+              <span className="text-white/90">
+                {row.emoji} {row.label}
+              </span>
+              <span>{row.value}</span>
+            </div>
+          ))}
         </div>
+      )}
+
+      {totalMonth > 0 && (
+        <>
+          <ProgressBar ratio={paidMonth / totalMonth} className="mt-4" />
+          <div className="num mt-2 flex justify-between text-[12px] font-semibold text-white/95">
+            {remaining === 0 ? (
+              <span>{t('allPaidMonth')}</span>
+            ) : (
+              <>
+                <span>
+                  ✓ {formatMoneyShort(paidMonth, currency, locale)} {t('paidSoFar')}
+                </span>
+                <span>
+                  {formatMoneyShort(remaining, currency, locale)} {t('remaining')}
+                </span>
+              </>
+            )}
+          </div>
+        </>
       )}
     </div>
   )
