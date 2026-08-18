@@ -640,7 +640,7 @@ export function AddSheet({
                           if (f === 'once') setBasis('fixed')
                         }}
                       >
-                        {t(f as TKey)}
+                        {f === 'once' ? t('onceIncome') : t(f as TKey)}
                       </Chip>
                     ))}
                   </div>
