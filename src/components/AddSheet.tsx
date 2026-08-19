@@ -14,6 +14,7 @@ import { buildRemindersIcs, icsEventCount, shareIcs } from '../lib/ics'
 import { formatDay } from '../lib/i18n'
 import { addMonthsClamped, monthsInclusive, todayISO } from '../lib/dates'
 import { downscaleImage } from '../lib/image'
+import { getErrorLog, saveHintKey } from '../lib/errors'
 import { Chip, Field, inputCls, Segmented, Sheet } from './ui'
 
 type FormKind = ItemKind | 'income' | 'expense'
@@ -288,6 +289,14 @@ export function AddSheet({
     setNewCatName('')
   }
 
+  // A failed save keeps the form OPEN and says what happened (the adapter
+  // logs the real cause right before resolving false).
+  const showSaveError = () => {
+    const detail = getErrorLog()[0]?.message ?? ''
+    const hint = saveHintKey(detail)
+    setError(`${t(hint ?? 'saveFailed')}${detail ? ` — ${detail}` : ''}`)
+  }
+
   const save = async () => {
     if (kind !== 'expense' && !name.trim()) return setError(t('fillName'))
     if (editItem && !snapshot.items.some((i) => i.id === editItem.id)) return setError(t('deletedElsewhere'))
@@ -299,7 +308,7 @@ export function AddSheet({
     if (kind === 'expense') {
       if (amount === null || amount <= 0) return setError(t('invalidAmount'))
       const expenseId = editExpense?.id ?? crypto.randomUUID()
-      await upsertExpense({
+      const okExpense = await upsertExpense({
         id: expenseId,
         date: startDate,
         amount,
@@ -310,6 +319,7 @@ export function AddSheet({
         note: notes.trim() || null,
         createdAt: editExpense?.createdAt ?? new Date().toISOString(),
       })
+      if (!okExpense) return showSaveError()
       if (mode === 'cloud') {
         for (const r of newReceipts) {
           const ok = await uploadReceipt(expenseId, r.id, await downscaleImage(r.blob))
@@ -323,7 +333,7 @@ export function AddSheet({
     if (kind === 'income') {
       const cycleAmount = isHourlyIncome ? cyclePay : amount
       if (cycleAmount === null || cycleAmount <= 0) return setError(t('invalidAmount'))
-      await upsertIncome({
+      const okIncome = await upsertIncome({
         id: editIncome?.id ?? crypto.randomUUID(),
         name: name.trim(),
         owner,
@@ -337,6 +347,7 @@ export function AddSheet({
         daysPerWeek: isHourlyIncome ? nDaysPerWeek : null,
         createdAt: editIncome?.createdAt ?? new Date().toISOString(),
       })
+      if (!okIncome) return showSaveError()
       return onClose()
     }
 
@@ -358,7 +369,7 @@ export function AddSheet({
       archived: editItem?.archived ?? false,
       createdAt: editItem?.createdAt ?? new Date().toISOString(),
     }
-    await upsertItem(item)
+    if (!(await upsertItem(item))) return showSaveError()
     onClose()
   }
 

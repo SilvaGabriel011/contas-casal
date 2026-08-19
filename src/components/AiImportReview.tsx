@@ -9,7 +9,7 @@ import { FREQ_EVERY, KIND_CONFIG } from '../lib/kinds'
 import { getDeviceOwner } from '../lib/device'
 import { todayISO } from '../lib/dates'
 import type { QuickDraft } from '../lib/ai'
-import { logError } from '../lib/errors'
+import { getErrorLog, logError, saveHintKey } from '../lib/errors'
 import type { DupCandidate, DupMatch } from '../lib/duplicates'
 import { findDuplicates } from '../lib/duplicates'
 import { inputCls, ProgressBar, Segmented, Sheet } from './ui'
@@ -122,8 +122,10 @@ export function AiImportReview({
   const saveRow = async (r: Row) => {
     const amount = rowAmount(r)
     if (amount === null || amount <= 0) throw new Error('invalid')
+    // The upserts resolve to whether the save persisted — a false means the
+    // adapter failed and already logged the real cause.
     if (r.type === 'expense') {
-      await upsertExpense({
+      const ok = await upsertExpense({
         id: crypto.randomUUID(),
         date: r.date,
         amount,
@@ -134,6 +136,7 @@ export function AiImportReview({
         note: r.name.trim() || r.note.trim() || null,
         createdAt: new Date().toISOString(),
       })
+      if (!ok) throw new Error('save-failed')
       return
     }
     if (r.type === 'income') {
@@ -154,7 +157,7 @@ export function AiImportReview({
         daysPerWeek: null,
         createdAt: new Date().toISOString(),
       }
-      await upsertIncome(income)
+      if (!(await upsertIncome(income))) throw new Error('save-failed')
       return
     }
     const cfg = KIND_CONFIG[r.type]
@@ -174,7 +177,7 @@ export function AiImportReview({
       archived: false,
       createdAt: new Date().toISOString(),
     }
-    await upsertItem(item)
+    if (!(await upsertItem(item))) throw new Error('save-failed')
   }
 
   const persistRows = async (toSave: Row[]) => {
@@ -185,7 +188,11 @@ export function AiImportReview({
       onDone()
     } catch (e) {
       logError('ai-import-confirm', e)
-      setError(t('saveFailed'))
+      // The adapter logged the real cause just before failing — surface it
+      // with a classified hint instead of blaming the connection.
+      const detail = getErrorLog()[0]?.message ?? ''
+      const hint = saveHintKey(detail)
+      setError(`${t(hint ?? 'saveFailed')}${detail ? ` — ${detail}` : ''}`)
     } finally {
       setBusy(false)
     }

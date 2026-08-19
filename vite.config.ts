@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -41,9 +42,11 @@ function cspMeta(): Plugin {
 // GitHub Pages serves the app from /contas-casal/; Vercel and local dev use /.
 export default defineConfig({
   base: process.env.GITHUB_PAGES ? '/contas-casal/' : '/',
-  // Build stamp shown in Ajustes -> Diagnostico so the couple can tell at a
-  // glance whether a phone already picked up the latest deploy.
+  // Version + build stamp shown in the Menu and in Ajustes so the couple can
+  // tell at a glance whether a phone already picked up the latest deploy.
+  // The x.y.z comes from package.json — bump it on every release.
   define: {
+    __APP_VERSION__: JSON.stringify(JSON.parse(readFileSync('./package.json', 'utf8')).version as string),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
     __BUILD_SHA__: JSON.stringify((process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev').slice(0, 7)),
   },

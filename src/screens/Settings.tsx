@@ -29,6 +29,7 @@ export function Settings() {
     disablePush,
     listBackups,
     getBackup,
+    listClientErrors,
   } = useAppData()
   const { t, lang, locale, decimalSep, setLang } = useI18n()
   const { theme, setTheme } = useTheme()
@@ -40,6 +41,9 @@ export function Settings() {
   const [copied, setCopied] = useState(false)
   const [deviceOwner, setDeviceOwnerState] = useState<'a' | 'b' | null>(getDeviceOwner)
   const [errLog, setErrLog] = useState(getErrorLog)
+  const [remoteErrors, setRemoteErrors] = useState<
+    { ts: string; context: string; message: string; device: string; appVersion: string }[] | null
+  >(null)
   const [reportCopied, setReportCopied] = useState(false)
   const [pushState, setPushState] = useState<'unknown' | 'on' | 'off' | 'unsupported'>('unknown')
   const [pushBusy, setPushBusy] = useState(false)
@@ -116,13 +120,33 @@ export function Settings() {
     lockAvailable().then(setLockOk)
   }, [])
 
+  // Shared diagnostics: errors captured by BOTH phones (client_errors table).
+  useEffect(() => {
+    if (mode !== 'cloud') return
+    listClientErrors()
+      .then(setRemoteErrors)
+      .catch(() => setRemoteErrors([]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode])
+
+  const deviceShort = (ua: string) => ua.match(/iPhone|iPad|Android|Macintosh|Windows/)?.[0] ?? '?'
+
+  const fullReport = () => {
+    const remote = (remoteErrors ?? []).map(
+      (e) => `${e.ts} [${e.context}] ${e.message} (${deviceShort(e.device)} · ${e.appVersion})`
+    )
+    return remote.length > 0
+      ? [errorReport(), '', `— ${t('diagRemote')} —`, ...remote].join('\n')
+      : errorReport()
+  }
+
   const copyReport = async () => {
     try {
-      await navigator.clipboard.writeText(errorReport())
+      await navigator.clipboard.writeText(fullReport())
       setReportCopied(true)
       setTimeout(() => setReportCopied(false), 2000)
     } catch {
-      prompt('Report', errorReport())
+      prompt('Report', fullReport())
     }
   }
 
@@ -653,8 +677,25 @@ export function Settings() {
             </div>
           </>
         )}
+        {mode === 'cloud' && (remoteErrors?.length ?? 0) > 0 && (
+          <>
+            <p className="pt-1 text-[12px] font-bold text-ink2">📡 {t('diagRemote')}</p>
+            <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl bg-card2 p-2.5">
+              {(remoteErrors ?? []).slice(0, 10).map((e, i) => (
+                <p key={i} className="num text-[11px] leading-snug text-ink2">
+                  <span className="font-bold text-ink">[{e.context}]</span> {e.message}
+                  <span className="opacity-70">
+                    {' '}
+                    · {deviceShort(e.device)}
+                    {e.appVersion ? ` · ${e.appVersion}` : ''}
+                  </span>
+                </p>
+              ))}
+            </div>
+          </>
+        )}
         <p className="num border-t border-line pt-3 text-[12px] text-ink2">
-          {t('diagBuild')}: <span className="font-bold">{__BUILD_SHA__}</span> ·{' '}
+          {t('diagBuild')}: <span className="font-bold">v{__APP_VERSION__}</span> ({__BUILD_SHA__}) ·{' '}
           {new Intl.DateTimeFormat(locale, { dateStyle: 'short', timeStyle: 'short' }).format(
             new Date(__BUILD_TIME__)
           )}
